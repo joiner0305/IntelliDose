@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispensador · Monitoreo</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<style>
+  :root{
+    --bg:#0b0c0e; --panel:#141517; --line:#26282b;
+    --text:#eceeee; --dim:#8a8f94; --accent:#eceeee;
+    --ok:#5fd68a; --warn:#e0b34a; --bad:#e05f5f;
+    --mono: "SF Mono","JetBrains Mono",Consolas,monospace;
+    --sans: -apple-system,"Inter",Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    min-height:100vh; display:flex; align-items:flex-start; justify-content:center;
+    padding:48px 20px;
+  }
+  .wrap{width:100%; max-width:640px;}
+  header{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:36px;}
+  h1{font-size:15px; font-weight:600; letter-spacing:0.02em;}
+  h1 span{color:var(--dim); font-weight:400;}
+  #userbar{font-family:var(--mono); font-size:12px; color:var(--dim); display:flex; gap:12px; align-items:center;}
+  #userbar button{background:none; border:1px solid var(--line); color:var(--dim); font-size:11px; padding:5px 10px; border-radius:6px; cursor:pointer;}
+  #userbar button:hover{color:var(--text); border-color:#3a3d41;}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:20px;}
+  .panel h2{font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--dim); font-weight:600; margin-bottom:16px;}
+
+  /* --- Auth --- */
+  #auth-panel{max-width:360px; margin:80px auto 0;}
+  #auth-panel .panel{}
+  .auth-logo{display:block; max-width:200px; width:100%; height:auto; margin:0 auto 28px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:11px; color:var(--dim); margin-bottom:6px;}
+  .field input{
+    width:100%; background:#0e0f11; border:1px solid var(--line); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:14px; font-family:var(--sans);
+  }
+  .field input:focus{outline:none; border-color:#4a4e53;}
+  .btn{
+    width:100%; background:var(--text); color:#0b0c0e; border:none; padding:11px;
+    border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; margin-top:6px;
+  }
+  .btn:hover{opacity:0.88;}
+  .btn.secondary{background:none; border:1px solid var(--line); color:var(--text);}
+  .switch{text-align:center; font-size:12px; color:var(--dim); margin-top:14px; cursor:pointer;}
+  .switch:hover{color:var(--text);}
+  .err{color:var(--bad); font-size:12px; margin-top:10px; display:none;}
+
+  /* --- Schedules --- */
+  .schedule-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 0; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:13px;
+  }
+  .schedule-row:last-child{border-bottom:none;}
+  .schedule-row .label{color:var(--dim); font-family:var(--sans); font-size:12px; margin-left:10px;}
+  .del{background:none; border:none; color:var(--dim); cursor:pointer; font-size:16px; line-height:1;}
+  .del:hover{color:var(--bad);}
+  .add-row{display:flex; gap:8px; margin-top:14px;}
+  .add-row input{background:#0e0f11; border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 10px; font-family:var(--mono); font-size:13px;}
+  .add-row input[type=time]{flex:0 0 120px;}
+  .add-row input[type=text]{flex:1;}
+  .add-row button{flex:0 0 auto; background:var(--text); color:#0b0c0e; border:none; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer;}
+
+  /* --- Events --- */
+  .event{display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid var(--line);}
+  .event:last-child{border-bottom:none;}
+  .dot{width:8px; height:8px; border-radius:50%; margin-top:5px; flex:0 0 auto;}
+  .dot.dispensed{background:var(--dim);}
+  .dot.alert{background:var(--warn);}
+  .dot.taken{background:var(--ok);}
+  .dot.timeout{background:var(--bad);}
+  .event .txt{font-size:13px;}
+  .event .meta{font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:2px;}
+  .empty{color:var(--dim); font-size:13px; padding:8px 0;}
+
+  #app-panel{display:none;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- ============ AUTENTICACIÓN ============ -->
+  <div id="auth-panel">
+    <div class="panel">
+      <img src="assets/logo.png" alt="Logo" class="auth-logo">
+      <h2 id="auth-title">Iniciar sesión</h2>
+      <div class="field"><label>Correo</label><input id="auth-email" type="email" placeholder="tu@correo.com"></div>
+      <div class="field"><label>Contraseña</label><input id="auth-pass" type="password" placeholder="••••••••"></div>
+      <button class="btn" id="auth-submit">Entrar</button>
+      <div class="err" id="auth-err"></div>
+      <div class="switch" id="auth-switch">¿No tienes cuenta? Regístrate</div>
+    </div>
+  </div>
+
+  <!-- ============ DASHBOARD ============ -->
+  <div id="app-panel">
+    <header>
+      <h1>Dispensador <span>· monitoreo</span></h1>
+      <div id="userbar">
+        <span id="user-email"></span>
+        <button id="logout-btn">Salir</button>
+      </div>
+    </header>
+
+    <div class="panel">
+      <h2>Horarios programados</h2>
+      <div id="schedule-list"><div class="empty">Cargando…</div></div>
+      <div class="add-row">
+        <input type="time" id="new-time" step="1" value="08:00:00">
+        <input type="text" id="new-label" placeholder="Etiqueta (ej: Losartán)">
+        <button id="add-schedule">Agregar</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Notificaciones</h2>
+      <div id="event-list"><div class="empty">Cargando…</div></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+// -----------------------------------------------------------
+// Configuración: reemplaza con tus valores de Supabase y Render
+// -----------------------------------------------------------
+const SUPABASE_URL = "https://TU_PROYECTO.supabase.co";
+const SUPABASE_ANON_KEY = "TU_ANON_KEY";
+const API_BASE_URL = "https://tu-servicio.onrender.com";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let isRegisterMode = false;
+let session = null;
+
+const $ = (id) => document.getElementById(id);
+
+// ---------------- AUTH ----------------
+$('auth-switch').onclick = () => {
+  isRegisterMode = !isRegisterMode;
+  $('auth-title').textContent = isRegisterMode ? 'Crear cuenta' : 'Iniciar sesión';
+  $('auth-submit').textContent = isRegisterMode ? 'Registrarme' : 'Entrar';
+  $('auth-switch').textContent = isRegisterMode ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate';
+  $('auth-err').style.display = 'none';
+};
+
+$('auth-submit').onclick = async () => {
+  const email = $('auth-email').value.trim();
+  const password = $('auth-pass').value;
+  $('auth-err').style.display = 'none';
+
+  const { data, error } = isRegisterMode
+    ? await sb.auth.signUp({ email, password })
+    : await sb.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    $('auth-err').textContent = error.message;
+    $('auth-err').style.display = 'block';
+    return;
+  }
+
+  if (isRegisterMode && !data.session) {
+    $('auth-err').style.color = 'var(--ok)';
+    $('auth-err').textContent = 'Cuenta creada. Revisa tu correo para confirmar el acceso.';
+    $('auth-err').style.display = 'block';
+    return;
+  }
+
+  onAuthenticated(data.session);
+};
+
+$('logout-btn').onclick = async () => {
+  await sb.auth.signOut();
+  location.reload();
+};
+
+async function onAuthenticated(sess) {
+  session = sess;
+  $('auth-panel').style.display = 'none';
+  $('app-panel').style.display = 'block';
+  $('user-email').textContent = session.user.email;
+  await loadSchedules();
+  await loadEvents();
+  subscribeRealtime();
+}
+
+// ---------------- API helper ----------------
+async function api(path, options = {}) {
+  const res = await fetch(API_BASE_URL + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + session.access_token,
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+  return res.status === 204 ? null : res.json();
+}
+
+// ---------------- HORARIOS ----------------
+async function loadSchedules() {
+  const list = await api('/api/schedules');
+  const el = $('schedule-list');
+  el.innerHTML = '';
+  if (!list.length) { el.innerHTML = '<div class="empty">Sin horarios programados.</div>'; return; }
+  for (const s of list) {
+    const row = document.createElement('div');
+    row.className = 'schedule-row';
+    const t = [s.hour, s.minute, s.second].map(n => String(n).padStart(2, '0')).join(':');
+    row.innerHTML = `<span>${t}<span class="label">${s.label || ''}</span></span>`;
+    const del = document.createElement('button');
+    del.className = 'del'; del.textContent = '×';
+    del.onclick = () => deleteSchedule(s.id);
+    row.appendChild(del);
+    el.appendChild(row);
+  }
+}
+
+$('add-schedule').onclick = async () => {
+  const [hour, minute, second] = $('new-time').value.split(':').map(Number);
+  const label = $('new-label').value.trim();
+  await api('/api/schedules', { method: 'POST', body: JSON.stringify({ hour, minute, second: second || 0, label }) });
+  $('new-label').value = '';
+  await loadSchedules();
+};
+
+async function deleteSchedule(id) {
+  await api('/api/schedules/' + id, { method: 'DELETE' });
+  await loadSchedules();
+}
+
+// ---------------- EVENTOS / NOTIFICACIONES ----------------
+const eventText = {
+  dispensed: 'Medicamento dispensado',
+  alert: 'Alerta: el medicamento sigue en la bandeja',
+  taken: 'Medicamento retirado por el paciente',
+  timeout: 'Tiempo límite alcanzado sin retiro'
+};
+
+async function loadEvents() {
+  const list = await api('/api/events');
+  renderEvents(list);
+}
+
+function renderEvents(list) {
+  const el = $('event-list');
+  el.innerHTML = '';
+  if (!list.length) { el.innerHTML = '<div class="empty">Sin notificaciones aún.</div>'; return; }
+  for (const e of list) {
+    const row = document.createElement('div');
+    row.className = 'event';
+    const delayTxt = e.delay_seconds != null ? ` · ${e.delay_seconds}s` : '';
+    row.innerHTML = `
+      <div class="dot ${e.type}"></div>
+      <div>
+        <div class="txt">${eventText[e.type] || e.type}${delayTxt}</div>
+        <div class="meta">${new Date(e.created_at).toLocaleString('es-CO')}</div>
+      </div>`;
+    el.appendChild(row);
+  }
+}
+
+// Supabase Realtime: nuevas filas en `events` llegan aquí al instante,
+// sin necesidad de infraestructura de push aparte.
+function subscribeRealtime() {
+  sb.channel('events-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, () => {
+      loadEvents();
+    })
+    .subscribe();
+}
+
+// ---------------- Sesión existente al cargar ----------------
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if (data.session) onAuthenticated(data.session);
+})();
+</script>
+</body>
+</html>

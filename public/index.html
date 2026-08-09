@@ -54,6 +54,7 @@
   .stat .v{font-family:var(--display); font-size:22px; font-weight:600; letter-spacing:-0.01em; line-height:1.1;}
   .stat .v small{font-family:var(--sans); font-size:12px; color:var(--dim); font-weight:500; display:block; margin-top:4px;}
   .stat .v.accent{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .stat .v.empty{font-family:var(--sans); font-size:13px; font-weight:500; color:var(--dim);}
   @media (max-width:680px){ .stats{grid-template-columns:1fr;} }
 
   /* ================= PANELS ================= */
@@ -100,15 +101,23 @@
     background:var(--panel-2); border:1px solid var(--line); padding:5px 12px; border-radius:99px;
   }
   .schedule-row .label{color:var(--dim); font-family:var(--sans); font-size:12.5px; margin-left:12px;}
+  .schedule-row .countdown{color:var(--teal); font-family:var(--mono); font-size:11px; margin-left:10px;}
   .del{background:none; border:none; color:var(--dim-2); cursor:pointer; font-size:17px; line-height:1; padding:4px 8px; border-radius:6px; transition:.15s;}
   .del:hover{color:var(--red); background:rgba(242,84,91,0.08);}
-  .add-row{display:flex; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--line-soft);}
+  .add-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--line-soft); align-items:center;}
   .add-row input{background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 11px; font-family:var(--mono); font-size:13px;}
   .add-row input:focus{outline:none; border-color:var(--teal);}
-  .add-row input[type=time]{flex:0 0 128px;}
-  .add-row input[type=text]{flex:1; font-family:var(--sans);}
+  .offset-group{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px; color:var(--dim);}
+  .offset-group input[type=number]{width:58px; text-align:center; -moz-appearance:textfield;}
+  .offset-group input[type=number]::-webkit-outer-spin-button,
+  .offset-group input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+  .add-row input[type=text]{flex:1; min-width:140px; font-family:var(--sans);}
   .add-row button{flex:0 0 auto; background:var(--text); color:#0b1220; border:none; border-radius:9px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:.15s;}
   .add-row button:hover{background:var(--teal); color:#051012;}
+  .add-hint{font-size:11.5px; color:var(--dim-2); margin-top:10px;}
+  .mode-toggle{display:flex; gap:4px; background:var(--panel-2); border:1px solid var(--line); border-radius:99px; padding:3px; flex:0 0 auto;}
+  .mode-btn{background:none; border:none; color:var(--dim); font-family:var(--sans); font-size:12px; font-weight:600; padding:6px 13px; border-radius:99px; cursor:pointer; transition:.15s;}
+  .mode-btn.active{background:var(--grad); color:#051012;}
 
   /* ---- Events ---- */
   .event{display:flex; align-items:flex-start; gap:13px; padding:13px 4px; border-bottom:1px solid var(--line-soft);}
@@ -166,15 +175,15 @@
     <div class="stats">
       <div class="stat">
         <div class="k">Próxima dosis</div>
-        <div class="v accent" id="stat-next">—</div>
+        <div class="v empty" id="stat-next">Cargando…</div>
       </div>
       <div class="stat">
         <div class="k">Adherencia · 7 días</div>
-        <div class="v" id="stat-adherence">—</div>
+        <div class="v empty" id="stat-adherence">Cargando…</div>
       </div>
       <div class="stat">
         <div class="k">Última actividad</div>
-        <div class="v" id="stat-activity">—</div>
+        <div class="v empty" id="stat-activity">Cargando…</div>
       </div>
     </div>
 
@@ -185,10 +194,19 @@
       </div>
       <div id="schedule-list"><div class="empty">Cargando…</div></div>
       <div class="add-row">
-        <input type="time" id="new-time" step="1" value="08:00:00">
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="once">Una vez</button>
+          <button type="button" class="mode-btn" data-mode="repeat">Repetir</button>
+        </div>
+        <div class="offset-group">
+          <span id="offset-prefix">en</span>
+          <input type="number" id="new-hours" min="0" max="23" value="0"> h
+          <input type="number" id="new-minutes" min="0" max="59" value="2"> min
+        </div>
         <input type="text" id="new-label" placeholder="Etiqueta (ej: Losartán)">
         <button id="add-schedule">Agregar</button>
       </div>
+      <div class="add-hint" id="add-hint">Se guarda como hora exacta a partir de ahora — útil para probar el prototipo sin esperar al reloj.</div>
     </div>
 
     <div class="panel">
@@ -292,6 +310,30 @@ async function api(path, options = {}) {
 }
 
 // ---------------- HORARIOS ----------------
+let addMode = 'once'; // 'once' | 'repeat'
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.onclick = () => {
+    addMode = btn.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+    if (addMode === 'once') {
+      $('offset-prefix').textContent = 'en';
+      $('add-hint').textContent = 'Se guarda como hora exacta a partir de ahora — útil para probar el prototipo sin esperar al reloj.';
+    } else {
+      $('offset-prefix').textContent = 'cada';
+      $('add-hint').textContent = 'Se repite indefinidamente cada este intervalo, hasta que borres el horario.';
+    }
+  };
+});
+
+function fmtHM(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.round((totalSeconds % 3600) / 60);
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
 async function loadSchedules() {
   const list = await api('/api/schedules');
   currentSchedules = list;
@@ -302,8 +344,10 @@ async function loadSchedules() {
   for (const s of list) {
     const row = document.createElement('div');
     row.className = 'schedule-row';
-    const t = [s.hour, s.minute, s.second].map(n => String(n).padStart(2, '0')).join(':');
-    row.innerHTML = `<span><span class="time-chip">${t}</span><span class="label">${s.label || ''}</span></span>`;
+    const chip = s.repeat_seconds != null
+      ? `cada ${fmtHM(s.repeat_seconds)}`
+      : [s.hour, s.minute, s.second].map(n => String(n).padStart(2, '0')).join(':');
+    row.innerHTML = `<span><span class="time-chip">${chip}</span><span class="label">${s.label || ''}</span><span class="countdown">${countdownText(s)}</span></span>`;
     const del = document.createElement('button');
     del.className = 'del'; del.textContent = '×';
     del.onclick = () => deleteSchedule(s.id);
@@ -314,9 +358,21 @@ async function loadSchedules() {
 }
 
 $('add-schedule').onclick = async () => {
-  const [hour, minute, second] = $('new-time').value.split(':').map(Number);
+  const hoursFromNow = parseInt($('new-hours').value, 10) || 0;
+  const minutesFromNow = parseInt($('new-minutes').value, 10) || 0;
   const label = $('new-label').value.trim();
-  await api('/api/schedules', { method: 'POST', body: JSON.stringify({ hour, minute, second: second || 0, label }) });
+  const totalSeconds = hoursFromNow * 3600 + minutesFromNow * 60;
+
+  let body;
+  if (addMode === 'repeat') {
+    if (totalSeconds <= 0) return;
+    body = { repeat_seconds: totalSeconds, label };
+  } else {
+    const target = new Date(Date.now() + totalSeconds * 1000);
+    body = { hour: target.getHours(), minute: target.getMinutes(), second: target.getSeconds(), label };
+  }
+
+  await api('/api/schedules', { method: 'POST', body: JSON.stringify(body) });
   $('new-label').value = '';
   await loadSchedules();
 };
@@ -326,16 +382,53 @@ async function deleteSchedule(id) {
   await loadSchedules();
 }
 
-function updateNextDose() {
-  if (!currentSchedules.length) { $('stat-next').innerHTML = '—<small>Sin horarios</small>'; return; }
+function countdownText(s) {
+  if (s.repeat_seconds != null) {
+    const createdMs = new Date(s.created_at).getTime();
+    const elapsed = Math.floor((Date.now() - createdMs) / 1000);
+    const remaining = s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
+    return `próxima ${fmtHM(remaining)}`;
+  }
   const now = new Date();
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const toSec = s => s.hour * 3600 + s.minute * 60 + s.second;
-  const upcoming = currentSchedules.map(s => ({ s, diff: toSec(s) - nowSec }))
-    .map(x => x.diff < 0 ? { ...x, diff: x.diff + 86400 } : x)
-    .sort((a, b) => a.diff - b.diff)[0];
-  const t = [upcoming.s.hour, upcoming.s.minute, upcoming.s.second].map(n => String(n).padStart(2, '0')).join(':');
-  $('stat-next').innerHTML = `${t}<small>${upcoming.s.label || 'Sin etiqueta'}</small>`;
+  const target = s.hour * 3600 + s.minute * 60 + s.second;
+  let diff = target - nowSec;
+  if (diff < 0) diff += 86400;
+  if (diff === 0) return 'en menos de 1 min';
+  return `en ${fmtHM(diff)}`;
+}
+
+function updateNextDose() {
+  const el = $('stat-next');
+  if (!currentSchedules.length) {
+    el.className = 'v empty';
+    el.textContent = 'Sin horarios aún';
+    return;
+  }
+  const now = new Date();
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+  const withDiff = currentSchedules.map(s => {
+    if (s.repeat_seconds != null) {
+      const createdMs = new Date(s.created_at).getTime();
+      const elapsed = Math.floor((Date.now() - createdMs) / 1000);
+      const diff = s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
+      return { s, diff };
+    }
+    const target = s.hour * 3600 + s.minute * 60 + s.second;
+    let diff = target - nowSec;
+    if (diff < 0) diff += 86400;
+    return { s, diff };
+  });
+
+  const upcoming = withDiff.sort((a, b) => a.diff - b.diff)[0];
+  const label = upcoming.s.label || 'Sin etiqueta';
+  const display = upcoming.s.repeat_seconds != null
+    ? `cada ${fmtHM(upcoming.s.repeat_seconds)}`
+    : [upcoming.s.hour, upcoming.s.minute, upcoming.s.second].map(n => String(n).padStart(2, '0')).join(':');
+
+  el.className = 'v accent';
+  el.innerHTML = `${display}<small>${label}</small>`;
 }
 
 // ---------------- EVENTOS / NOTIFICACIONES ----------------
@@ -373,6 +466,7 @@ function renderEvents(list) {
 
 function updateStats(list) {
   // Última actividad
+  const elActivity = $('stat-activity');
   if (list.length) {
     const last = new Date(list[0].created_at);
     const diffMin = Math.round((Date.now() - last.getTime()) / 60000);
@@ -381,20 +475,25 @@ function updateStats(list) {
     else if (diffMin < 60) txt = `Hace ${diffMin} min`;
     else if (diffMin < 1440) txt = `Hace ${Math.round(diffMin / 60)} h`;
     else txt = `Hace ${Math.round(diffMin / 1440)} d`;
-    $('stat-activity').innerHTML = `${txt}<small>${eventText[list[0].type] || list[0].type}</small>`;
+    elActivity.className = 'v';
+    elActivity.innerHTML = `${txt}<small>${eventText[list[0].type] || list[0].type}</small>`;
   } else {
-    $('stat-activity').innerHTML = '—<small>Sin actividad aún</small>';
+    elActivity.className = 'v empty';
+    elActivity.textContent = 'Sin actividad aún';
   }
 
   // Adherencia (últimos 7 días): % de tomas dentro del umbral de alerta (30s) sin timeout
+  const elAdherence = $('stat-adherence');
   const weekAgo = Date.now() - 7 * 86400000;
   const recent = list.filter(e => new Date(e.created_at).getTime() >= weekAgo && (e.type === 'taken' || e.type === 'timeout'));
   if (!recent.length) {
-    $('stat-adherence').innerHTML = '—<small>Sin datos aún</small>';
+    elAdherence.className = 'v empty';
+    elAdherence.textContent = 'Sin datos aún';
   } else {
     const onTime = recent.filter(e => e.type === 'taken' && (e.delay_seconds == null || e.delay_seconds <= 30)).length;
     const pct = Math.round((onTime / recent.length) * 100);
-    $('stat-adherence').innerHTML = `${pct}%<small>${recent.length} dosis registradas</small>`;
+    elAdherence.className = 'v';
+    elAdherence.innerHTML = `${pct}%<small>${recent.length} dosis registradas</small>`;
   }
 }
 
@@ -408,8 +507,8 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-// Refresca "próxima dosis" cada minuto aunque no haya cambios
-setInterval(() => { if (session) updateNextDose(); }, 60000);
+// Refresca "próxima dosis" y las cuentas regresivas cada minuto aunque no haya cambios
+setInterval(() => { if (session) { updateNextDose(); loadSchedules(); } }, 60000);
 
 // ---------------- Sesión existente al cargar ----------------
 (async () => {

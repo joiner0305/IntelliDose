@@ -60,14 +60,19 @@ async function requireUser(req, res, next) {
 app.get('/api/esp32/schedules', requireDeviceKey, async (req, res) => {
   const { data, error } = await supabase
     .from('schedules')
-    .select('id, hour, minute, second, label')
+    .select('id, hour, minute, second, repeat_seconds, label, created_at')
     .eq('active', true)
     .order('hour', { ascending: true });
 
   if (error) return res.status(500).json({ error: error.message });
 
+  const schedules = data.map(s => ({
+    ...s,
+    created_at_epoch: Math.floor(new Date(s.created_at).getTime() / 1000)
+  }));
+
   res.json({
-    schedules: data,
+    schedules,
     config: {
       alert_threshold_seconds: req.deviceConfig.alert_threshold_seconds,
       max_wait_seconds: req.deviceConfig.max_wait_seconds,
@@ -113,13 +118,23 @@ app.get('/api/schedules', requireUser, async (req, res) => {
 });
 
 app.post('/api/schedules', requireUser, async (req, res) => {
-  const { hour, minute, second = 0, label } = req.body;
-  if (hour == null || minute == null) {
-    return res.status(400).json({ error: 'hour y minute son requeridos (formato 24h)' });
+  const { hour, minute, second = 0, label, repeat_seconds } = req.body;
+
+  let payload = { label, created_by: req.user.id };
+
+  if (repeat_seconds != null) {
+    if (repeat_seconds <= 0) return res.status(400).json({ error: 'repeat_seconds debe ser mayor a 0' });
+    payload = { ...payload, repeat_seconds, hour: null, minute: null, second: null };
+  } else {
+    if (hour == null || minute == null) {
+      return res.status(400).json({ error: 'hour y minute son requeridos (formato 24h), o envía repeat_seconds' });
+    }
+    payload = { ...payload, hour, minute, second, repeat_seconds: null };
   }
+
   const { data, error } = await supabase
     .from('schedules')
-    .insert({ hour, minute, second, label, created_by: req.user.id })
+    .insert(payload)
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });

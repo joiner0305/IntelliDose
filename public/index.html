@@ -48,7 +48,7 @@
   #userbar button:hover{color:var(--text); border-color:var(--dim-2);}
 
   /* ================= STAT STRIP ================= */
-  .stats{display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:20px;}
+  .stats{display:grid; grid-template-columns:repeat(2, 1fr); gap:14px; margin-bottom:20px;}
   .stat{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px;}
   .stat .k{font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); font-weight:600; margin-bottom:10px;}
   .stat .v{font-family:var(--display); font-size:22px; font-weight:600; letter-spacing:-0.01em; line-height:1.1;}
@@ -176,10 +176,6 @@
       <div class="stat">
         <div class="k">Próxima dosis</div>
         <div class="v empty" id="stat-next">Cargando…</div>
-      </div>
-      <div class="stat">
-        <div class="k">Adherencia · 7 días</div>
-        <div class="v empty" id="stat-adherence">Cargando…</div>
       </div>
       <div class="stat">
         <div class="k">Última actividad</div>
@@ -480,20 +476,6 @@ function updateStats(list) {
   } else {
     elActivity.className = 'v empty';
     elActivity.textContent = 'Sin actividad aún';
-  }
-
-  // Adherencia (últimos 7 días): % de tomas dentro del umbral de alerta (30s) sin timeout
-  const elAdherence = $('stat-adherence');
-  const weekAgo = Date.now() - 7 * 86400000;
-  const recent = list.filter(e => new Date(e.created_at).getTime() >= weekAgo && (e.type === 'taken' || e.type === 'timeout'));
-  if (!recent.length) {
-    elAdherence.className = 'v empty';
-    elAdherence.textContent = 'Sin datos aún';
-  } else {
-    const onTime = recent.filter(e => e.type === 'taken' && (e.delay_seconds == null || e.delay_seconds <= 30)).length;
-    const pct = Math.round((onTime / recent.length) * 100);
-    elAdherence.className = 'v';
-    elAdherence.innerHTML = `${pct}%<small>${recent.length} dosis registradas</small>`;
   }
 }
 

@@ -99,6 +99,29 @@ app.post('/api/esp32/event', requireDeviceKey, async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
+  // Cada dispensación cuenta contra el límite del horario (si tiene uno).
+  // Un horario de "una vez" (repeat_seconds null) siempre se desactiva
+  // tras su primera dispensación; uno repetitivo solo si alcanzó
+  // repeat_count, o sigue activo indefinidamente si no tiene límite.
+  if (type === 'dispensed' && schedule_id) {
+    const { data: sched } = await supabase
+      .from('schedules')
+      .select('repeat_seconds, repeat_count, times_fired')
+      .eq('id', schedule_id)
+      .single();
+
+    if (sched) {
+      const timesFired = (sched.times_fired || 0) + 1;
+      const isOnce = sched.repeat_seconds == null;
+      const reachedLimit = isOnce || (sched.repeat_count != null && timesFired >= sched.repeat_count);
+
+      await supabase
+        .from('schedules')
+        .update({ times_fired: timesFired, active: !reachedLimit })
+        .eq('id', schedule_id);
+    }
+  }
+
   // Supabase Realtime notifica automáticamente al dashboard
   // (suscripción directa a la tabla `events`, ver public/index.html).
   res.status(201).json({ ok: true, event: data });
@@ -118,18 +141,19 @@ app.get('/api/schedules', requireUser, async (req, res) => {
 });
 
 app.post('/api/schedules', requireUser, async (req, res) => {
-  const { hour, minute, second = 0, label, repeat_seconds } = req.body;
+  const { hour, minute, second = 0, label, repeat_seconds, repeat_count } = req.body;
 
   let payload = { label, created_by: req.user.id };
 
   if (repeat_seconds != null) {
     if (repeat_seconds <= 0) return res.status(400).json({ error: 'repeat_seconds debe ser mayor a 0' });
-    payload = { ...payload, repeat_seconds, hour: null, minute: null, second: null };
+    if (repeat_count != null && repeat_count <= 0) return res.status(400).json({ error: 'repeat_count debe ser mayor a 0' });
+    payload = { ...payload, repeat_seconds, repeat_count: repeat_count ?? null, hour: null, minute: null, second: null };
   } else {
     if (hour == null || minute == null) {
       return res.status(400).json({ error: 'hour y minute son requeridos (formato 24h), o envía repeat_seconds' });
     }
-    payload = { ...payload, hour, minute, second, repeat_seconds: null };
+    payload = { ...payload, hour, minute, second, repeat_seconds: null, repeat_count: null };
   }
 
   const { data, error } = await supabase

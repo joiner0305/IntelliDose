@@ -45,6 +45,12 @@
   #userbar{font-family:var(--mono); font-size:12px; color:var(--dim); display:flex; gap:12px; align-items:center;}
   #userbar button{background:none; border:1px solid var(--line); color:var(--dim); font-size:11px; padding:6px 12px; border-radius:99px; cursor:pointer; transition:.15s;}
   #userbar button:hover{color:var(--text); border-color:var(--dim-2);}
+  .device-status{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; padding:4px 11px; border-radius:99px; border:1px solid var(--line);}
+  .device-status .dot{width:7px; height:7px; border-radius:50%; flex:0 0 auto;}
+  .device-status.online{color:var(--green); border-color:rgba(52,211,153,0.35);}
+  .device-status.online .dot{background:var(--green); box-shadow:0 0 6px var(--green);}
+  .device-status.offline{color:var(--dim-2);}
+  .device-status.offline .dot{background:var(--dim-2);}
 
   /* ================= STAT STRIP ================= */
   .stats{display:grid; grid-template-columns:repeat(2, 1fr); gap:14px; margin-bottom:20px;}
@@ -239,6 +245,7 @@
         <div class="tag">monitoreo</div>
       </div>
       <div id="userbar">
+        <span id="device-status" class="device-status offline"><span class="dot"></span><span id="device-status-text">Verificando…</span></span>
         <span id="user-email"></span>
         <button id="logout-btn">Salir</button>
       </div>
@@ -398,6 +405,30 @@ async function onAuthenticated(sess) {
   await loadSchedules();
   await loadEvents();
   subscribeRealtime();
+  checkDeviceStatus();
+}
+
+// ---------------- Estado del dispositivo (en línea / desconectado) ----------------
+async function checkDeviceStatus() {
+  try {
+    const st = await api('/api/device/status');
+    const el = $('device-status');
+    if (st.online) {
+      el.className = 'device-status online';
+      $('device-status-text').textContent = 'Dispositivo en línea';
+    } else {
+      el.className = 'device-status offline';
+      if (st.last_seen_at) {
+        const secs = Math.round((Date.now() - new Date(st.last_seen_at).getTime()) / 1000);
+        const ago = secs < 60 ? `hace ${secs}s` : secs < 3600 ? `hace ${Math.round(secs/60)} min` : `hace ${Math.round(secs/3600)} h`;
+        $('device-status-text').textContent = `Desconectado (${ago})`;
+      } else {
+        $('device-status-text').textContent = 'Nunca conectado';
+      }
+    }
+  } catch (e) {
+    // silencioso: el toast del helper ya avisa si el backend falla
+  }
 }
 
 // ---------------- Toast de avisos ----------------
@@ -663,6 +694,8 @@ function subscribeRealtime() {
 setInterval(() => { if (session) renderScheduleList(); }, 1000);
 // Cada 30s: refresca desde el servidor por si hay cambios de otra sesión/dispositivo
 setInterval(() => { if (session) loadSchedules(); }, 30000);
+// Refresca el indicador "en línea" del ESP32 cada 10s
+setInterval(() => { if (session) checkDeviceStatus(); }, 10000);
 
 // ---------------- Sesión existente al cargar ----------------
 // Revisa localStorage primero (sesión "recordada"), luego sessionStorage

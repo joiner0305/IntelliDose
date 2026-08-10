@@ -50,7 +50,7 @@
   .stats{display:grid; grid-template-columns:repeat(2, 1fr); gap:14px; margin-bottom:20px;}
   .stat{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px;}
   .stat .k{font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); font-weight:600; margin-bottom:10px;}
-  .stat .v{font-family:var(--display); font-size:22px; font-weight:600; letter-spacing:-0.01em; line-height:1.1;}
+  .stat .v{font-family:var(--display); font-size:22px; font-weight:600; letter-spacing:-0.01em; line-height:1.1; font-variant-numeric:tabular-nums;}
   .stat .v small{font-family:var(--sans); font-size:12px; color:var(--dim); font-weight:500; display:block; margin-top:4px;}
   .stat .v.accent{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
   .stat .v.empty{font-family:var(--sans); font-size:13px; font-weight:500; color:var(--dim);}
@@ -132,7 +132,7 @@
     background:var(--panel-2); border:1px solid var(--line); padding:5px 12px; border-radius:99px;
   }
   .schedule-row .label{color:var(--dim); font-family:var(--sans); font-size:12.5px; margin-left:12px;}
-  .schedule-row .countdown{color:var(--teal); font-family:var(--mono); font-size:11px; margin-left:10px;}
+  .schedule-row .countdown{color:var(--teal); font-family:var(--mono); font-size:11px; margin-left:10px; font-variant-numeric:tabular-nums; display:inline-block; min-width:38px;}
   .del{background:none; border:none; color:var(--dim-2); cursor:pointer; font-size:17px; line-height:1; padding:4px 8px; border-radius:6px; transition:.15s;}
   .del:hover{color:var(--red); background:rgba(242,84,91,0.08);}
   .add-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--line-soft); align-items:center;}
@@ -401,20 +401,51 @@ function fmtHM(totalSeconds) {
   return `${h} h ${m} min`;
 }
 
+// Formato de temporizador en vivo: "1:59", "0:05", "1:02:15"
+function fmtTimer(totalSeconds) {
+  totalSeconds = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const ss = String(s).padStart(2, '0');
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${ss}`;
+  return `${m}:${ss}`;
+}
+
+// Segundos exactos restantes hasta el próximo disparo de un horario
+function secondsUntil(s) {
+  if (s.repeat_seconds != null) {
+    const createdMs = new Date(s.created_at).getTime();
+    const elapsed = (Date.now() - createdMs) / 1000;
+    return s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
+  }
+  const now = new Date();
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
+  const target = s.hour * 3600 + s.minute * 60 + s.second;
+  let diff = target - nowSec;
+  if (diff < 0) diff += 86400;
+  return diff;
+}
+
 async function loadSchedules() {
   const list = await api('/api/schedules');
   currentSchedules = list;
+  $('schedule-count').textContent = list.length;
+  renderScheduleList();
+}
+
+// Solo redibuja desde currentSchedules (sin llamar a la API) — para el tick de cada segundo
+function renderScheduleList() {
   const el = $('schedule-list');
   el.innerHTML = '';
-  $('schedule-count').textContent = list.length;
-  if (!list.length) { el.innerHTML = '<div class="empty">Sin horarios programados.</div>'; updateNextDose(); return; }
-  for (const s of list) {
+  if (!currentSchedules.length) { el.innerHTML = '<div class="empty">Sin horarios programados.</div>'; updateNextDose(); return; }
+  for (const s of currentSchedules) {
     const row = document.createElement('div');
     row.className = 'schedule-row';
     const chip = s.repeat_seconds != null
       ? `cada ${fmtHM(s.repeat_seconds)}`
       : [s.hour, s.minute, s.second].map(n => String(n).padStart(2, '0')).join(':');
-    row.innerHTML = `<span><span class="time-chip">${chip}</span><span class="label">${s.label || ''}</span><span class="countdown">${countdownText(s)}</span></span>`;
+    row.innerHTML = `<span><span class="time-chip">${chip}</span><span class="label">${s.label || ''}</span><span class="countdown">${fmtTimer(secondsUntil(s))}</span></span>`;
     const del = document.createElement('button');
     del.className = 'del'; del.textContent = '×';
     del.onclick = () => deleteSchedule(s.id);
@@ -449,22 +480,6 @@ async function deleteSchedule(id) {
   await loadSchedules();
 }
 
-function countdownText(s) {
-  if (s.repeat_seconds != null) {
-    const createdMs = new Date(s.created_at).getTime();
-    const elapsed = Math.floor((Date.now() - createdMs) / 1000);
-    const remaining = s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
-    return `próxima ${fmtHM(remaining)}`;
-  }
-  const now = new Date();
-  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const target = s.hour * 3600 + s.minute * 60 + s.second;
-  let diff = target - nowSec;
-  if (diff < 0) diff += 86400;
-  if (diff === 0) return 'en menos de 1 min';
-  return `en ${fmtHM(diff)}`;
-}
-
 function updateNextDose() {
   const el = $('stat-next');
   if (!currentSchedules.length) {
@@ -472,30 +487,13 @@ function updateNextDose() {
     el.textContent = 'Sin horarios aún';
     return;
   }
-  const now = new Date();
-  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-  const withDiff = currentSchedules.map(s => {
-    if (s.repeat_seconds != null) {
-      const createdMs = new Date(s.created_at).getTime();
-      const elapsed = Math.floor((Date.now() - createdMs) / 1000);
-      const diff = s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
-      return { s, diff };
-    }
-    const target = s.hour * 3600 + s.minute * 60 + s.second;
-    let diff = target - nowSec;
-    if (diff < 0) diff += 86400;
-    return { s, diff };
-  });
-
+  const withDiff = currentSchedules.map(s => ({ s, diff: secondsUntil(s) }));
   const upcoming = withDiff.sort((a, b) => a.diff - b.diff)[0];
   const label = upcoming.s.label || 'Sin etiqueta';
-  const display = upcoming.s.repeat_seconds != null
-    ? `cada ${fmtHM(upcoming.s.repeat_seconds)}`
-    : [upcoming.s.hour, upcoming.s.minute, upcoming.s.second].map(n => String(n).padStart(2, '0')).join(':');
 
   el.className = 'v accent';
-  el.innerHTML = `${display}<small>${label}</small>`;
+  el.innerHTML = `${fmtTimer(upcoming.diff)}<small>${label}</small>`;
 }
 
 // ---------------- EVENTOS / NOTIFICACIONES ----------------
@@ -560,8 +558,10 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-// Refresca "próxima dosis" y las cuentas regresivas cada minuto aunque no haya cambios
-setInterval(() => { if (session) { updateNextDose(); loadSchedules(); } }, 60000);
+// Tick de 1s: redibuja los temporizadores en vivo sin golpear el servidor
+setInterval(() => { if (session) renderScheduleList(); }, 1000);
+// Cada 30s: refresca desde el servidor por si hay cambios de otra sesión/dispositivo
+setInterval(() => { if (session) loadSchedules(); }, 30000);
 
 // ---------------- Sesión existente al cargar ----------------
 // Revisa localStorage primero (sesión "recordada"), luego sessionStorage

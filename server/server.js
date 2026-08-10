@@ -199,6 +199,12 @@ app.post('/api/schedules', requireUser, async (req, res) => {
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // Para que la PRIMERA pastilla caiga en ~1s (y no esperar los 30s del
+  // poll normal), levantamos la bandera de chequeo rápido: el ESP32 la
+  // recoge en su force-check de cada 1s, recarga horarios y dispensa.
+  await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
+
   res.status(201).json(data);
 });
 

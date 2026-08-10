@@ -133,6 +133,9 @@
   }
   .schedule-row .label{color:var(--dim); font-family:var(--sans); font-size:12.5px; margin-left:12px;}
   .schedule-row .countdown{color:var(--teal); font-family:var(--mono); font-size:11px; margin-left:10px; font-variant-numeric:tabular-nums; display:inline-block; min-width:38px;}
+  .schedule-row .countdown.done{color:var(--dim-2); min-width:0;}
+  .schedule-row .progress{color:var(--dim-2); font-family:var(--mono); font-size:11px; margin-left:10px;}
+  .schedule-row.done{opacity:0.5;}
   .del{background:none; border:none; color:var(--dim-2); cursor:pointer; font-size:17px; line-height:1; padding:4px 8px; border-radius:6px; transition:.15s;}
   .del:hover{color:var(--red); background:rgba(242,84,91,0.08);}
   .add-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--line-soft); align-items:center;}
@@ -249,6 +252,10 @@
           <span id="offset-prefix">en</span>
           <input type="number" id="new-hours" min="0" max="23" value="0"> h
           <input type="number" id="new-minutes" min="0" max="59" value="2"> min
+        </div>
+        <div class="offset-group" id="count-group" style="display:none;">
+          ·
+          <input type="number" id="new-count" min="1" placeholder="∞"> veces
         </div>
         <input type="text" id="new-label" placeholder="Etiqueta (ej: Losartán)">
         <button id="add-schedule">Agregar</button>
@@ -386,9 +393,11 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     if (addMode === 'once') {
       $('offset-prefix').textContent = 'en';
       $('add-hint').textContent = 'Se guarda como hora exacta a partir de ahora — útil para probar el prototipo sin esperar al reloj.';
+      $('count-group').style.display = 'none';
     } else {
       $('offset-prefix').textContent = 'cada';
-      $('add-hint').textContent = 'Se repite indefinidamente cada este intervalo, hasta que borres el horario.';
+      $('add-hint').textContent = 'Se repite ese intervalo. Deja "veces" vacío para que sea indefinido, o pon un número para que se detenga solo.';
+      $('count-group').style.display = 'flex';
     }
   };
 });
@@ -441,11 +450,23 @@ function renderScheduleList() {
   if (!currentSchedules.length) { el.innerHTML = '<div class="empty">Sin horarios programados.</div>'; updateNextDose(); return; }
   for (const s of currentSchedules) {
     const row = document.createElement('div');
-    row.className = 'schedule-row';
+    row.className = 'schedule-row' + (s.active ? '' : ' done');
     const chip = s.repeat_seconds != null
       ? `cada ${fmtHM(s.repeat_seconds)}`
       : [s.hour, s.minute, s.second].map(n => String(n).padStart(2, '0')).join(':');
-    row.innerHTML = `<span><span class="time-chip">${chip}</span><span class="label">${s.label || ''}</span><span class="countdown">${fmtTimer(secondsUntil(s))}</span></span>`;
+
+    let progress = '';
+    if (s.repeat_seconds != null && s.repeat_count != null) {
+      progress = `<span class="progress">${s.times_fired}/${s.repeat_count}</span>`;
+    } else if (s.repeat_seconds != null) {
+      progress = `<span class="progress">${s.times_fired}×</span>`;
+    }
+
+    const status = s.active
+      ? `<span class="countdown">${fmtTimer(secondsUntil(s))}</span>`
+      : `<span class="countdown done">Completado</span>`;
+
+    row.innerHTML = `<span><span class="time-chip">${chip}</span><span class="label">${s.label || ''}</span>${progress}${status}</span>`;
     const del = document.createElement('button');
     del.className = 'del'; del.textContent = '×';
     del.onclick = () => deleteSchedule(s.id);
@@ -464,7 +485,9 @@ $('add-schedule').onclick = async () => {
   let body;
   if (addMode === 'repeat') {
     if (totalSeconds <= 0) return;
-    body = { repeat_seconds: totalSeconds, label };
+    const countRaw = $('new-count').value.trim();
+    const repeat_count = countRaw ? parseInt(countRaw, 10) : null;
+    body = { repeat_seconds: totalSeconds, repeat_count, label };
   } else {
     const target = new Date(Date.now() + totalSeconds * 1000);
     body = { hour: target.getHours(), minute: target.getMinutes(), second: target.getSeconds(), label };
@@ -472,6 +495,7 @@ $('add-schedule').onclick = async () => {
 
   await api('/api/schedules', { method: 'POST', body: JSON.stringify(body) });
   $('new-label').value = '';
+  $('new-count').value = '';
   await loadSchedules();
 };
 
@@ -482,13 +506,14 @@ async function deleteSchedule(id) {
 
 function updateNextDose() {
   const el = $('stat-next');
-  if (!currentSchedules.length) {
+  const active = currentSchedules.filter(s => s.active);
+  if (!active.length) {
     el.className = 'v empty';
-    el.textContent = 'Sin horarios aún';
+    el.textContent = currentSchedules.length ? 'Sin horarios activos' : 'Sin horarios aún';
     return;
   }
 
-  const withDiff = currentSchedules.map(s => ({ s, diff: secondsUntil(s) }));
+  const withDiff = active.map(s => ({ s, diff: secondsUntil(s) }));
   const upcoming = withDiff.sort((a, b) => a.diff - b.diff)[0];
   const label = upcoming.s.label || 'Sin etiqueta';
 

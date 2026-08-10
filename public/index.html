@@ -752,6 +752,12 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, () => {
       loadEvents();
     })
+    // Cambios en schedules (ej: last_cycle_at al retirar la pastilla, o
+    // times_fired al dispensar): recargamos horarios para que el contador
+    // del siguiente ciclo arranque de inmediato, sin esperar el refresco de 30s.
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
+      loadSchedules();
+    })
     .subscribe();
 }
 

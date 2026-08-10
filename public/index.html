@@ -599,6 +599,10 @@ $('add-schedule').onclick = async () => {
   $('new-label').value = '';
   $('new-count').value = '';
   await loadSchedules();
+
+  if (addMode === 'repeat') {
+    showToast('Horario creado — la primera pastilla se dispensa en unos segundos.', 'ok');
+  }
 };
 
 async function deleteSchedule(id) {

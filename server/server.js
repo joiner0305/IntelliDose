@@ -85,6 +85,25 @@ app.get('/api/esp32/schedules', requireDeviceKey, async (req, res) => {
   });
 });
 
+// Chequeo súper liviano, pensado para consultarse cada 1s (a diferencia
+// de /api/esp32/schedules que se consulta cada 30s). Si el dashboard
+// activó "Probar ahora", responde true UNA sola vez y lo apaga de inmediato,
+// para que un solo click dispare exactamente una vez.
+app.get('/api/esp32/force-check', requireDeviceKey, async (req, res) => {
+  if (!req.deviceConfig.force_trigger) return res.json({ trigger: false });
+
+  await supabase.from('device_config').update({ force_trigger: false }).eq('id', 1);
+  res.json({ trigger: true });
+});
+
+// El dashboard activa esta bandera; el ESP32 la recoge en su próximo
+// chequeo de /api/esp32/force-check (máx. ~1s).
+app.post('/api/schedules/force-trigger', requireUser, async (req, res) => {
+  const { error } = await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(204).end();
+});
+
 // El ESP32 reporta cada evento de su máquina de estados
 // (Etapas 2, 3 y 4 del documento).
 app.post('/api/esp32/event', requireDeviceKey, async (req, res) => {

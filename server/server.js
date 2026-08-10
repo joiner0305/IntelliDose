@@ -32,6 +32,10 @@ async function requireDeviceKey(req, res, next) {
   if (error || !data) return res.status(500).json({ error: 'No se pudo validar el dispositivo' });
   if (data.device_api_key !== key) return res.status(403).json({ error: 'API key inválida' });
 
+  // Registra "última vez visto" para el indicador en línea del dashboard.
+  // No esperamos (await) para no frenar la respuesta al ESP32.
+  supabase.from('device_config').update({ last_seen_at: new Date().toISOString() }).eq('id', 1).then(() => {});
+
   req.deviceConfig = data;
   next();
 }
@@ -218,6 +222,20 @@ app.patch('/api/events/:id/read', requireUser, async (req, res) => {
   const { error } = await supabase.from('events').update({ is_read: true }).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.status(204).end();
+});
+
+// Estado del ESP32: el dashboard lo consulta para el indicador en línea.
+app.get('/api/device/status', requireUser, async (req, res) => {
+  const { data, error } = await supabase
+    .from('device_config')
+    .select('last_seen_at')
+    .eq('id', 1)
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  const lastSeen = data.last_seen_at ? new Date(data.last_seen_at).getTime() : null;
+  const online = lastSeen != null && (Date.now() - lastSeen) < 40000; // 40s de gracia
+  res.json({ online, last_seen_at: data.last_seen_at });
 });
 
 app.get('/health', (req, res) => res.json({ ok: true }));

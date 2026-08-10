@@ -230,6 +230,13 @@ app.patch('/api/events/:id/read', requireUser, async (req, res) => {
   res.status(204).end();
 });
 
+// Borra TODAS las notificaciones (el dashboard pide confirmación antes).
+app.delete('/api/events', requireUser, async (req, res) => {
+  const { error } = await supabase.from('events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(204).end();
+});
+
 // Estado del ESP32: el dashboard lo consulta para el indicador en línea.
 app.get('/api/device/status', requireUser, async (req, res) => {
   const { data, error } = await supabase

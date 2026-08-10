@@ -45,7 +45,10 @@ async function requireUser(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Falta token' });
 
   const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user) return res.status(401).json({ error: 'Token inválido' });
+  if (error || !data?.user) {
+    console.error('requireUser: rechazado ->', error?.message || 'sin usuario en la respuesta', '| status:', error?.status);
+    return res.status(401).json({ error: 'Token inválido' });
+  }
 
   req.user = data.user;
   next();

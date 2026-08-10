@@ -302,6 +302,16 @@ const sbSession = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 let sb = sbLocal; // cliente activo (se define según "mantener sesión" al iniciar sesión)
 
+// Supabase renueva el access_token en segundo plano antes de que expire.
+// Sin esto, la app seguiría usando el token viejo para llamar a la API
+// y el backend empezaría a responder "Token inválido".
+sbLocal.auth.onAuthStateChange((_event, newSession) => {
+  if (sb === sbLocal && newSession) session = newSession;
+});
+sbSession.auth.onAuthStateChange((_event, newSession) => {
+  if (sb === sbSession && newSession) session = newSession;
+});
+
 let isRegisterMode = false;
 let session = null;
 let currentSchedules = [];

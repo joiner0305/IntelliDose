@@ -63,7 +63,7 @@ async function requireUser(req, res, next) {
 app.get('/api/esp32/schedules', requireDeviceKey, async (req, res) => {
   const { data, error } = await supabase
     .from('schedules')
-    .select('id, hour, minute, second, repeat_seconds, label, created_at')
+    .select('id, hour, minute, second, repeat_seconds, label, created_at, last_cycle_at')
     .eq('active', true)
     .order('hour', { ascending: true });
 
@@ -71,7 +71,8 @@ app.get('/api/esp32/schedules', requireDeviceKey, async (req, res) => {
 
   const schedules = data.map(s => ({
     ...s,
-    created_at_epoch: Math.floor(new Date(s.created_at).getTime() / 1000)
+    created_at_epoch: Math.floor(new Date(s.created_at).getTime() / 1000),
+    last_cycle_epoch: s.last_cycle_at ? Math.floor(new Date(s.last_cycle_at).getTime() / 1000) : null
   }));
 
   res.json({
@@ -123,6 +124,16 @@ app.post('/api/esp32/event', requireDeviceKey, async (req, res) => {
         .update({ times_fired: timesFired, active: !reachedLimit })
         .eq('id', schedule_id);
     }
+  }
+
+  // El ciclo termina con "taken" o "timeout": recién ahí el ESP32 empieza
+  // a contar el siguiente intervalo (si es un horario repetitivo). Guardamos
+  // el momento para que el dashboard muestre el mismo conteo que el dispositivo.
+  if ((type === 'taken' || type === 'timeout') && schedule_id) {
+    await supabase
+      .from('schedules')
+      .update({ last_cycle_at: new Date().toISOString() })
+      .eq('id', schedule_id);
   }
 
   // Supabase Realtime notifica automáticamente al dashboard

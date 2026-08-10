@@ -465,9 +465,19 @@ function fmtTimer(totalSeconds) {
 // Segundos exactos restantes hasta el próximo disparo de un horario
 function secondsUntil(s) {
   if (s.repeat_seconds != null) {
-    const createdMs = new Date(s.created_at).getTime();
-    const elapsed = (Date.now() - createdMs) / 1000;
-    return s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
+    // Mismo criterio que el ESP32: el conteo del siguiente disparo
+    // empieza cuando terminó el último ciclo (retiro/timeout), no en
+    // una rejilla fija desde que se creó el horario. Mientras no haya
+    // habido ningún ciclo todavía, se cuenta desde la creación.
+    const anchor = s.last_cycle_at ? new Date(s.last_cycle_at).getTime() : new Date(s.created_at).getTime();
+    const elapsed = (Date.now() - anchor) / 1000;
+    // Si el ciclo anterior está "en curso" (dispensando/esperando retiro),
+    // el ESP32 no dispara aunque el reloj ya haya llegado — esto solo es
+    // una estimación visual, el disparo real lo decide siempre el dispositivo.
+    if (!s.last_cycle_at) {
+      return s.repeat_seconds - (((elapsed % s.repeat_seconds) + s.repeat_seconds) % s.repeat_seconds);
+    }
+    return Math.max(0, s.repeat_seconds - elapsed);
   }
   const now = new Date();
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;

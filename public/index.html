@@ -701,9 +701,16 @@ const eventText = {
   timeout: 'Tiempo límite alcanzado sin retiro'
 };
 
+let lastEventsSignature = '';
+
 async function loadEvents() {
   const list = await api('/api/events');
-  renderEvents(list);
+  // Firma rápida para saber si la lista cambió (evita redibujar en vano).
+  const signature = list.map(e => e.id + e.is_read).join(',');
+  if (signature !== lastEventsSignature) {
+    lastEventsSignature = signature;
+    renderEvents(list);
+  }
   updateStats(list);
 }
 
@@ -761,11 +768,23 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-// Tick de 1s: redibuja los temporizadores en vivo sin golpear el servidor
+// Refresco silencioso: consulta el servidor cada 2s y actualiza solo lo
+// que cambió (notificaciones, horarios), sin recargar la página ni parpadear.
+// Reemplaza al Realtime de Supabase, que es inestable en el plan free.
+async function refrescoSilencioso() {
+  if (!session) return;
+  try {
+    await Promise.all([loadEvents(), loadSchedules()]);
+  } catch (e) {
+    // silencioso: el helper api() ya avisa con un toast si el backend falla
+  }
+}
+
+// Tick de 1s: redibuja los temporizadores en vivo (usa datos ya en memoria)
 setInterval(() => { if (session) renderScheduleList(); }, 1000);
-// Cada 30s: refresca desde el servidor por si hay cambios de otra sesión/dispositivo
-setInterval(() => { if (session) loadSchedules(); }, 30000);
-// Refresca el indicador "en línea" del ESP32 cada 10s
+// Refresco de datos desde el servidor cada 2s (imperceptible)
+setInterval(refrescoSilencioso, 2000);
+// Indicador "en línea" del ESP32 cada 10s
 setInterval(() => { if (session) checkDeviceStatus(); }, 10000);
 
 // ---------------- Sesión existente al cargar ----------------

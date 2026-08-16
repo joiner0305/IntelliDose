@@ -695,10 +695,10 @@ function updateNextDose() {
 
 // ---------------- EVENTOS / NOTIFICACIONES ----------------
 const eventText = {
-  dispensed: 'Medicamento dispensado',
-  alert: 'Alerta: el medicamento sigue en la bandeja',
-  taken: 'Medicamento retirado por el paciente',
-  timeout: 'Tiempo límite alcanzado sin retiro'
+  dispensed: 'Pastilla dispensada',
+  alert: 'Alerta: la pastilla aún no se ha tomado',
+  taken: 'Pastilla tomada por el paciente',
+  timeout: 'Tiempo límite alcanzado sin tomar la pastilla'
 };
 
 let lastEventsSignature = '';
@@ -723,14 +723,23 @@ function renderEvents(list) {
     const row = document.createElement('div');
     row.className = 'event';
     const delayTxt = e.delay_seconds != null ? ` · ${e.delay_seconds}s` : '';
+    // Si el evento trae un mensaje personalizado (ej. alerta de primera
+    // pastilla), se muestra ese en vez del texto genérico del tipo.
+    const texto = e.message ? escapeHtml(e.message) : (eventText[e.type] || e.type) + delayTxt;
     row.innerHTML = `
       <div class="icon ${e.type}">${icons[e.type] || ''}</div>
       <div>
-        <div class="txt">${eventText[e.type] || e.type}${delayTxt}</div>
+        <div class="txt">${texto}</div>
         <div class="meta">${new Date(e.created_at).toLocaleString('es-CO')}</div>
       </div>`;
     el.appendChild(row);
   }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function updateStats(list) {

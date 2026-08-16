@@ -111,7 +111,7 @@ app.post('/api/schedules/force-trigger', requireUser, async (req, res) => {
 // El ESP32 reporta cada evento de su máquina de estados
 // (Etapas 2, 3 y 4 del documento).
 app.post('/api/esp32/event', requireDeviceKey, async (req, res) => {
-  const { type, schedule_id, delay_seconds } = req.body;
+  const { type, schedule_id, delay_seconds, message } = req.body;
 
   const validTypes = ['dispensed', 'alert', 'taken', 'timeout'];
   if (!validTypes.includes(type)) {
@@ -120,7 +120,7 @@ app.post('/api/esp32/event', requireDeviceKey, async (req, res) => {
 
   const { data, error } = await supabase
     .from('events')
-    .insert({ type, schedule_id: schedule_id || null, delay_seconds: delay_seconds ?? null })
+    .insert({ type, schedule_id: schedule_id || null, delay_seconds: delay_seconds ?? null, message: message ?? null })
     .select()
     .single();
 

@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IntelliDose · Monitoreo</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1220; --panel:#121a2b; --panel-2:#0e1626; --line:#223049; --line-soft:#1a2338;
+    --text:#eaf0f6; --dim:#7c8ba3; --dim-2:#4e5c74;
+    --teal:#16c2b7; --blue:#3b82f6; --amber:#f2a93b; --green:#34d399; --red:#f2545b;
+    --grad: linear-gradient(135deg, var(--blue), var(--teal));
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    --sans: "Inter", -apple-system, Segoe UI, Roboto, sans-serif;
+    --display: "Space Grotesk", var(--sans);
+    --radius: 14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{-webkit-font-smoothing:antialiased;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(59,130,246,0.10), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(22,194,183,0.08), transparent 55%),
+      var(--bg);
+    color:var(--text); font-family:var(--sans);
+    min-height:100vh;
+  }
+  ::selection{background:rgba(59,130,246,0.35);}
+  :focus-visible{outline:2px solid var(--teal); outline-offset:2px; border-radius:6px;}
+  @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
+
+  .wrap{width:100%; max-width:880px; margin:0 auto; padding:56px 20px 80px;}
+
+  /* ================= HEADER ================= */
+  header{display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; padding-bottom:20px; border-bottom:1px solid var(--line-soft);}
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand img{width:28px; height:28px; border-radius:8px; display:block;}
+  .brand .word{font-family:var(--display); font-size:17px; font-weight:600; letter-spacing:-0.01em;}
+  .brand .word b{color:var(--teal); font-weight:600;}
+  .brand .tag{font-family:var(--mono); font-size:11px; color:var(--dim); margin-left:2px; padding-left:10px; border-left:1px solid var(--line);}
+  #userbar{font-family:var(--mono); font-size:12px; color:var(--dim); display:flex; gap:12px; align-items:center;}
+  #userbar button{background:none; border:1px solid var(--line); color:var(--dim); font-size:11px; padding:6px 12px; border-radius:99px; cursor:pointer; transition:.15s;}
+  #userbar button:hover{color:var(--text); border-color:var(--dim-2);}
+  .device-status{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; padding:4px 11px; border-radius:99px; border:1px solid var(--line);}
+  .device-status .dot{width:7px; height:7px; border-radius:50%; flex:0 0 auto;}
+  .device-status.online{color:var(--green); border-color:rgba(52,211,153,0.35);}
+  .device-status.online .dot{background:var(--green); box-shadow:0 0 6px var(--green);}
+  .device-status.offline{color:var(--dim-2);}
+  .device-status.offline .dot{background:var(--dim-2);}
+
+  /* ================= STAT STRIP ================= */
+  .stats{display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:20px;}
+  .stat{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px;}
+  .stat .k{font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); font-weight:600; margin-bottom:10px;}
+  .stat .v{font-family:var(--display); font-size:22px; font-weight:600; letter-spacing:-0.01em; line-height:1.1; font-variant-numeric:tabular-nums;}
+  .stat .v small{font-family:var(--sans); font-size:12px; color:var(--dim); font-weight:500; display:block; margin-top:4px;}
+  .stat .v.accent{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .stat .v.empty{font-family:var(--sans); font-size:13px; font-weight:500; color:var(--dim);}
+  .stat .v.warn{color:var(--amber);}
+  .stat .v.alarm{color:var(--amber); animation:alarmPulse 0.6s ease-in-out infinite;}
+  @keyframes alarmPulse{0%,100%{opacity:1;} 50%{opacity:.45;}}
+  @media (max-width:680px){ .stats{grid-template-columns:1fr;} }
+
+  /* ================= PANELS ================= */
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:22px 24px; margin-bottom:16px;}
+  .panel-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+  .panel h2{font-family:var(--display); font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); font-weight:600;}
+  .count-badge{font-family:var(--mono); font-size:11px; color:var(--dim-2); background:var(--panel-2); border:1px solid var(--line); padding:2px 8px; border-radius:99px;}
+  .test-btn{
+    background:none; border:1px solid var(--amber); color:var(--amber); font-family:var(--sans);
+    font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:99px; cursor:pointer; transition:.15s;
+  }
+  .test-btn:hover{background:rgba(242,169,59,0.12);}
+  .test-btn:disabled{opacity:0.5; cursor:default;}
+  .clear-btn{
+    background:none; border:1px solid var(--line); color:var(--dim); font-family:var(--sans);
+    font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:99px; cursor:pointer; transition:.15s;
+  }
+  .clear-btn:hover{color:var(--red); border-color:rgba(242,84,91,0.4);}
+  .clear-btn:disabled{opacity:0.4; cursor:default;}
+
+  /* ---- Modal de confirmación ---- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(5,10,18,0.7); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:100; padding:20px;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:26px 28px; max-width:400px; width:100%; box-shadow:0 20px 50px rgba(0,0,0,0.5);
+  }
+  .modal h3{font-family:var(--display); font-size:17px; font-weight:600; margin-bottom:10px;}
+  .modal p{font-size:13.5px; color:var(--dim); line-height:1.5; margin-bottom:22px;}
+  .modal-actions{display:flex; gap:10px; justify-content:flex-end;}
+  .modal-btn{border:none; border-radius:99px; font-family:var(--sans); font-size:13px; font-weight:600; padding:10px 18px; cursor:pointer; transition:.15s;}
+  .modal-btn.cancel{background:var(--panel-2); border:1px solid var(--line); color:var(--text);}
+  .modal-btn.cancel:hover{border-color:var(--dim-2);}
+  .modal-btn.danger{background:var(--red); color:#fff;}
+  .modal-btn.danger:hover{filter:brightness(1.1);}
+
+  /* ---- Auth (split screen a pantalla completa) ---- */
+  #auth-panel{
+    display:flex; min-height:100vh; width:100%;
+  }
+  .auth-form-side{
+    flex:1 1 56%; display:flex; flex-direction:column; padding:40px clamp(24px,6vw,72px);
+    min-width:0; position:relative; z-index:1;
+  }
+  .auth-topbrand{display:flex; align-items:center; gap:9px; margin-bottom:auto;}
+  .auth-topbrand img{width:24px; height:24px; border-radius:7px;}
+  .auth-topbrand span{font-family:var(--display); font-size:14.5px; font-weight:600;}
+  .auth-form-wrap{max-width:380px; width:100%; margin:auto auto; padding:40px 0;}
+  #auth-title{font-family:var(--display); font-size:30px; font-weight:700; letter-spacing:-0.02em; margin-bottom:8px;}
+  .auth-sub{font-size:14px; color:var(--dim); margin-bottom:30px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; color:var(--dim); margin-bottom:6px; font-weight:500;}
+  .field label .req{color:var(--teal);}
+  .field input{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:12px 14px; border-radius:10px; font-size:14px; font-family:var(--sans); transition:.15s;
+  }
+  .field input::placeholder{color:var(--dim-2);}
+  .field input:focus{outline:none; border-color:var(--teal); background:#0c1220;}
+  .pass-wrap{position:relative; display:flex;}
+  .pass-wrap input{padding-right:64px;}
+  .pass-wrap button{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    background:none; border:none; font-size:11.5px; font-weight:600; color:var(--dim);
+    cursor:pointer; padding:7px 10px; font-family:var(--sans); border-radius:7px; transition:.15s;
+  }
+  .pass-wrap button:hover{color:var(--teal);}
+  .keep-row{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--dim); margin:18px 0 4px; cursor:pointer;}
+  .keep-row input{width:15px; height:15px; accent-color:var(--teal); cursor:pointer;}
+  .btn{
+    width:100%; background:var(--grad); color:#051012; border:none; padding:13px;
+    border-radius:99px; font-size:14px; font-weight:600; cursor:pointer; margin-top:22px;
+    font-family:var(--sans); transition:.15s; letter-spacing:.01em;
+  }
+  .btn:hover{filter:brightness(1.08); transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);}
+  .switch{text-align:center; font-size:13px; color:var(--dim); margin-top:20px; cursor:pointer; transition:.15s;}
+  .switch:hover{color:var(--teal);}
+  .err{color:var(--red); font-size:12.5px; margin-top:14px; text-align:center; display:none;}
+
+  .auth-brand-side{
+    flex:1 1 44%; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
+    padding:48px;
+    background:
+      radial-gradient(120% 90% at 20% 10%, rgba(255,255,255,0.10), transparent 55%),
+      linear-gradient(160deg, #0d3a52, #0a1f33 45%, #071626);
+  }
+  .brand-glow{position:absolute; width:70%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle, rgba(22,194,183,0.28), transparent 70%); top:-10%; right:-15%; filter:blur(10px);}
+  .auth-brand-side img{position:relative; z-index:1; width:100%; max-width:340px; height:auto; filter:drop-shadow(0 10px 30px rgba(0,0,0,0.5));}
+
+  @media (max-width:760px){
+    .auth-brand-side{display:none;}
+    .auth-form-side{flex:1 1 100%; padding:32px 22px;}
+  }
+
+  /* ---- Schedules ---- */
+  .schedule-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:11px 4px; border-bottom:1px solid var(--line-soft);
+  }
+  .schedule-row:last-child{border-bottom:none;}
+  .schedule-row .time-chip{
+    font-family:var(--mono); font-size:12.5px; font-weight:500; color:var(--text);
+    background:var(--panel-2); border:1px solid var(--line); padding:5px 12px; border-radius:99px;
+  }
+  .schedule-row .label{color:var(--dim); font-family:var(--sans); font-size:12.5px; margin-left:12px;}
+  .schedule-row .countdown{color:var(--teal); font-family:var(--mono); font-size:11px; margin-left:10px; font-variant-numeric:tabular-nums; display:inline-block; min-width:38px;}
+  .schedule-row .countdown.done{color:var(--dim-2); min-width:0;}
+  .schedule-row .progress{color:var(--dim-2); font-family:var(--mono); font-size:11px; margin-left:10px;}
+  .schedule-row.done{opacity:0.5;}
+  .del{background:none; border:none; color:var(--dim-2); cursor:pointer; font-size:17px; line-height:1; padding:4px 8px; border-radius:6px; transition:.15s;}
+  .del:hover{color:var(--red); background:rgba(242,84,91,0.08);}
+  .add-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--line-soft); align-items:center;}
+  .add-row input{background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:9px; padding:9px 11px; font-family:var(--mono); font-size:13px;}
+  .add-row input:focus{outline:none; border-color:var(--teal);}
+  .offset-group{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px; color:var(--dim);}
+  .offset-group input[type=number]{width:58px; text-align:center; -moz-appearance:textfield;}
+  .offset-group input[type=number]::-webkit-outer-spin-button,
+  .offset-group input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+  .add-row input[type=text]{flex:1; min-width:140px; font-family:var(--sans);}
+  .add-row button{flex:0 0 auto; background:var(--text); color:#0b1220; border:none; border-radius:9px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:.15s;}
+  .add-row button:hover{background:var(--teal); color:#051012;}
+  .add-hint{font-size:11.5px; color:var(--dim-2); margin-top:10px;}
+  .mode-toggle{display:flex; gap:4px; background:var(--panel-2); border:1px solid var(--line); border-radius:99px; padding:3px; flex:0 0 auto;}
+  .mode-btn{background:none; border:none; color:var(--dim); font-family:var(--sans); font-size:12px; font-weight:600; padding:6px 13px; border-radius:99px; cursor:pointer; transition:.15s;}
+  .mode-btn.active{background:var(--grad); color:#051012;}
+
+  /* ---- Events ---- */
+  .event{display:flex; align-items:flex-start; gap:13px; padding:13px 4px; border-bottom:1px solid var(--line-soft);}
+  .event:last-child{border-bottom:none;}
+  .icon{
+    width:30px; height:30px; border-radius:9px; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .icon svg{width:15px; height:15px;}
+  .icon.dispensed{background:rgba(124,139,163,0.14); color:var(--dim);}
+  .icon.alert{background:rgba(242,169,59,0.14); color:var(--amber);}
+  .icon.taken{background:rgba(52,211,153,0.14); color:var(--green);}
+  .icon.timeout{background:rgba(242,84,91,0.14); color:var(--red);}
+  .event .txt{font-size:13.5px; font-weight:500;}
+  .event .meta{font-family:var(--mono); font-size:11px; color:var(--dim-2); margin-top:3px;}
+  .empty{color:var(--dim); font-size:13px; padding:6px 4px;}
+
+  #app-panel{display:none;}
+
+  /* ---- Toast de errores ---- */
+  #toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+    background:#1a0f12; border:1px solid rgba(242,84,91,0.4); color:#ffd9db;
+    padding:12px 18px; border-radius:11px; font-size:13px; max-width:90vw;
+    box-shadow:0 12px 30px rgba(0,0,0,0.4); opacity:0; pointer-events:none; transition:.2s;
+    z-index:50;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #toast.ok{background:#0e1a14; border-color:rgba(52,211,153,0.4); color:#c8f5e2;}
+</style>
+</head>
+<body>
+
+<!-- ============ AUTENTICACIÓN ============ -->
+<div id="auth-panel">
+  <div class="auth-form-side">
+    <div class="auth-topbrand">
+      <img src="assets/favicon.png" alt="">
+      <span>IntelliDose</span>
+    </div>
+    <div class="auth-form-wrap">
+      <h1 id="auth-title">Iniciar sesión</h1>
+      <p class="auth-sub" id="auth-sub">Ingresa tu correo y contraseña para continuar</p>
+
+      <div class="field">
+        <label>Correo</label>
+        <input id="auth-email" type="email" placeholder="tu@correo.com">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <div class="pass-wrap">
+          <input id="auth-pass" type="password" placeholder="Mín. 6 caracteres">
+          <button type="button" id="toggle-pass">Mostrar</button>
+        </div>
+      </div>
+      <label class="keep-row"><input type="checkbox" id="keep-logged" checked> Mantener sesión iniciada en este dispositivo</label>
+
+      <button class="btn" id="auth-submit">Entrar</button>
+      <div class="err" id="auth-err"></div>
+      <div class="switch" id="auth-switch">¿No tienes cuenta? Regístrate</div>
+    </div>
+  </div>
+
+  <div class="auth-brand-side">
+    <div class="brand-glow"></div>
+    <img src="assets/logo-brand.png" alt="IntelliDose">
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="toast"></div>
+
+  <!-- ============ DASHBOARD ============ -->
+  <div id="app-panel">
+    <header>
+      <div class="brand">
+        <img src="assets/favicon.png" alt="">
+        <div class="word"><b>Intelli</b>Dose</div>
+        <div class="tag">monitoreo</div>
+      </div>
+      <div id="userbar">
+        <span id="device-status" class="device-status offline"><span class="dot"></span><span id="device-status-text">Verificando…</span></span>
+        <span id="user-email"></span>
+        <button id="logout-btn">Salir</button>
+      </div>
+    </header>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="k">Próxima dosis</div>
+        <div class="v empty" id="stat-next">Cargando…</div>
+      </div>
+      <div class="stat">
+        <div class="k">Última actividad</div>
+        <div class="v empty" id="stat-activity">Cargando…</div>
+      </div>
+      <div class="stat">
+        <div class="k">Alarma de retiro</div>
+        <div class="v empty" id="stat-alarm">Sin alerta activa</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Horarios programados</h2>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="test-trigger" class="test-btn">⚡ Probar dispensación ahora</button>
+          <span class="count-badge" id="schedule-count">0</span>
+        </div>
+      </div>
+      <div id="schedule-list"><div class="empty">Cargando…</div></div>
+      <div class="add-row">
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="once">Una vez</button>
+          <button type="button" class="mode-btn" data-mode="repeat">Repetir</button>
+        </div>
+        <div class="offset-group">
+          <span id="offset-prefix">en</span>
+          <input type="number" id="new-hours" min="0" max="23" value="0"> h
+          <input type="number" id="new-minutes" min="0" max="59" value="2"> min
+        </div>
+        <div class="offset-group" id="count-group" style="display:none;">
+          ·
+          <input type="number" id="new-count" min="1" placeholder="∞"> veces
+        </div>
+        <input type="text" id="new-label" placeholder="Etiqueta (ej: Losartán)">
+        <button id="add-schedule">Agregar</button>
+      </div>
+      <div class="add-hint" id="add-hint">Se guarda como hora exacta a partir de ahora — útil para probar el prototipo sin esperar al reloj.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Notificaciones</h2>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="clear-events" class="clear-btn">Borrar historial</button>
+          <span class="count-badge" id="event-count">0</span>
+        </div>
+      </div>
+      <div id="event-list"><div class="empty">Cargando…</div></div>
+    </div>
+  </div>
+
+  <!-- Modal de confirmación para borrar historial -->
+  <div id="confirm-overlay" class="modal-overlay">
+    <div class="modal">
+      <h3>¿Borrar todo el historial?</h3>
+      <p>Se eliminarán todas las notificaciones de forma permanente. Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel" class="modal-btn cancel">Cancelar</button>
+        <button id="confirm-delete" class="modal-btn danger">Borrar todo</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+// -----------------------------------------------------------
+// Configuración: valores de Supabase y Render
+// -----------------------------------------------------------
+const SUPABASE_URL = "https://pqsvhpbktgnnujfbdqrs.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxc3ZocGJrdGdubnVqZmJkcXJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0OTI1NDUsImV4cCI6MjEwMDA2ODU0NX0.TGZIM43atupworGCN9PYKUbmBBO2hJHmwL2hWTgn2ik";
+const API_BASE_URL = "https://intellidose.onrender.com";
+
+const sbLocal = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, storage: window.localStorage }
+});
+const sbSession = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, storage: window.sessionStorage }
+});
+let sb = sbLocal; // cliente activo (se define según "mantener sesión" al iniciar sesión)
+
+// Supabase renueva el access_token en segundo plano antes de que expire.
+// Sin esto, la app seguiría usando el token viejo para llamar a la API
+// y el backend empezaría a responder "Token inválido".
+sbLocal.auth.onAuthStateChange((_event, newSession) => {
+  if (sb === sbLocal && newSession) session = newSession;
+});
+sbSession.auth.onAuthStateChange((_event, newSession) => {
+  if (sb === sbSession && newSession) session = newSession;
+});
+
+let isRegisterMode = false;
+let session = null;
+let currentSchedules = [];
+
+const $ = (id) => document.getElementById(id);
+
+// ---------------- ICONOS ----------------
+const icons = {
+  dispensed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="10" width="18" height="7" rx="3.5" transform="rotate(-25 12 12)"/><line x1="9.5" y1="8.7" x2="14.5" y2="15.3" transform="rotate(-25 12 12)"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+  taken: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  timeout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+};
+
+// ---------------- AUTH ----------------
+$('toggle-pass').onclick = () => {
+  const input = $('auth-pass');
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  $('toggle-pass').textContent = showing ? 'Mostrar' : 'Ocultar';
+};
+
+$('auth-switch').onclick = () => {
+  isRegisterMode = !isRegisterMode;
+  $('auth-title').textContent = isRegisterMode ? 'Crear cuenta' : 'Iniciar sesión';
+  $('auth-sub').textContent = isRegisterMode ? 'Regístrate con tu correo para empezar a monitorear' : 'Ingresa tu correo y contraseña para continuar';
+  $('auth-submit').textContent = isRegisterMode ? 'Registrarme' : 'Entrar';
+  $('auth-switch').textContent = isRegisterMode ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate';
+  $('auth-err').style.display = 'none';
+};
+
+$('auth-submit').onclick = async () => {
+  const email = $('auth-email').value.trim();
+  const password = $('auth-pass').value;
+  const keepLogged = $('keep-logged').checked;
+  $('auth-err').style.display = 'none';
+
+  // El cliente elegido decide dónde vive el token: localStorage (persiste
+  // entre reinicios del navegador) o sessionStorage (se borra al cerrar la pestaña).
+  const client = keepLogged ? sbLocal : sbSession;
+
+  const { data, error } = isRegisterMode
+    ? await client.auth.signUp({ email, password })
+    : await client.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    $('auth-err').style.color = 'var(--red)';
+    $('auth-err').textContent = error.message;
+    $('auth-err').style.display = 'block';
+    return;
+  }
+
+  if (isRegisterMode && !data.session) {
+    $('auth-err').style.color = 'var(--green)';
+    $('auth-err').textContent = 'Cuenta creada. Revisa tu correo para confirmar el acceso.';
+    $('auth-err').style.display = 'block';
+    return;
+  }
+
+  sb = client;
+  onAuthenticated(data.session);
+};
+
+$('logout-btn').onclick = async () => {
+  await sb.auth.signOut();
+  location.reload();
+};
+
+async function onAuthenticated(sess) {
+  session = sess;
+  $('auth-panel').style.display = 'none';
+  $('app-panel').style.display = 'block';
+  $('user-email').textContent = session.user.email;
+  await loadAlertThreshold();
+  await loadSchedules();
+  await loadEvents();
+  subscribeRealtime();
+  checkDeviceStatus();
+}
+
+// ---------------- Umbral de alerta (Etapa 3), leído directo de device_config ----------------
+let alertThresholdSeconds = 30; // valor por defecto mientras carga
+async function loadAlertThreshold() {
+  try {
+    const { data, error } = await sb.from('device_config').select('alert_threshold_seconds').eq('id', 1).single();
+    if (!error && data) alertThresholdSeconds = data.alert_threshold_seconds;
+  } catch (e) {
+    // silencioso: se queda con el valor por defecto (30s)
+  }
+}
+
+// ---------------- Estado del dispositivo (en línea / desconectado) ----------------
+async function checkDeviceStatus() {
+  try {
+    const st = await api('/api/device/status');
+    const el = $('device-status');
+    if (st.online) {
+      el.className = 'device-status online';
+      $('device-status-text').textContent = 'Dispositivo en línea';
+    } else {
+      el.className = 'device-status offline';
+      if (st.last_seen_at) {
+        const secs = Math.round((Date.now() - new Date(st.last_seen_at).getTime()) / 1000);
+        const ago = secs < 60 ? `hace ${secs}s` : secs < 3600 ? `hace ${Math.round(secs/60)} min` : `hace ${Math.round(secs/3600)} h`;
+        $('device-status-text').textContent = `Desconectado (${ago})`;
+      } else {
+        $('device-status-text').textContent = 'Nunca conectado';
+      }
+    }
+  } catch (e) {
+    // silencioso: el toast del helper ya avisa si el backend falla
+  }
+}
+
+// ---------------- Toast de avisos ----------------
+let toastTimer = null;
+function showToast(message, type = 'error') {
+  const el = $('toast');
+  el.textContent = message;
+  el.className = 'show' + (type === 'ok' ? ' ok' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+// ---------------- API helper ----------------
+async function api(path, options = {}) {
+  let res;
+  try {
+    res = await fetch(API_BASE_URL + path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+        ...(options.headers || {})
+      }
+    });
+  } catch (networkErr) {
+    showToast('No se pudo conectar con el servidor. Revisa tu conexión e intenta de nuevo.');
+    throw networkErr;
+  }
+  if (!res.ok) {
+    const msg = (await res.json().catch(() => ({}))).error || res.statusText;
+    showToast(msg);
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+// ---------------- HORARIOS ----------------
+let addMode = 'once'; // 'once' | 'repeat'
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.onclick = () => {
+    addMode = btn.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+    if (addMode === 'once') {
+      $('offset-prefix').textContent = 'en';
+      $('add-hint').textContent = 'Se guarda como hora exacta a partir de ahora — útil para probar el prototipo sin esperar al reloj.';
+      $('count-group').style.display = 'none';
+    } else {
+      $('offset-prefix').textContent = 'cada';
+      $('add-hint').textContent = 'Se repite ese intervalo. Deja "veces" vacío para que sea indefinido, o pon un número para que se detenga solo.';
+      $('count-group').style.display = 'flex';
+    }
+  };
+});
+
+function fmtHM(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.round((totalSeconds % 3600) / 60);
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+// Formato de temporizador en vivo: "1:59", "0:05", "1:02:15"
+function fmtTimer(totalSeconds) {
+  totalSeconds = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const ss = String(s).padStart(2, '0');
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${ss}`;
+  return `${m}:${ss}`;
+}
+
+// Segundos exactos restantes hasta el próximo disparo de un horario
+function secondsUntil(s) {
+  if (s.repeat_seconds != null) {
+    // Mismo criterio que el ESP32:
+    //  · Si nunca ha dispensado (sin last_cycle_at): la primera pastilla
+    //    cae de inmediato -> 0s restantes.
+    //  · Si ya hubo un ciclo: el conteo del siguiente disparo se cuenta
+    //    desde el último retiro/timeout registrado.
+    if (!s.last_cycle_at) return 0;
+    const elapsed = (Date.now() - new Date(s.last_cycle_at).getTime()) / 1000;
+    return Math.max(0, s.repeat_seconds - elapsed);
+  }
+  const now = new Date();
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
+  const target = s.hour * 3600 + s.minute * 60 + s.second;
+  let diff = target - nowSec;
+  if (diff < 0) diff += 86400;
+  return diff;
+}
+
+async function loadSchedules() {
+  const list = await api('/api/schedules');
+  currentSchedules = list;
+  $('schedule-count').textContent = list.length;
+  renderScheduleList();
+}
+
+// Solo redibuja desde currentSchedules (sin llamar a la API) — para el tick de cada segundo
+function renderScheduleList() {
+  const el = $('schedule-list');
+  el.innerHTML = '';
+  if (!currentSchedules.length) { el.innerHTML = '<div class="empty">Sin horarios programados.</div>'; updateNextDose(); return; }
+  for (const s of currentSchedules) {
+    const row = document.createElement('div');
+    row.className = 'schedule-row' + (s.active ? '' : ' done');
+    const chip = s.repeat_seconds != null
+      ? `cada ${fmtHM(s.repeat_seconds)}`
+      : [s.hour, s.minute, s.second].map(n => String(n).padStart(2, '0')).join(':');
+
+    let progress = '';
+    if (s.repeat_seconds != null && s.repeat_count != null) {
+      progress = `<span class="progress">${s.times_fired}/${s.repeat_count}</span>`;
+    } else if (s.repeat_seconds != null) {
+      progress = `<span class="progress">${s.times_fired}×</span>`;
+    }
+
+    const status = s.active
+      ? `<span class="countdown">${fmtTimer(secondsUntil(s))}</span>`
+      : `<span class="countdown done">Completado</span>`;
+
+    row.innerHTML = `<span><span class="time-chip">${chip}</span><span class="label">${s.label || ''}</span>${progress}${status}</span>`;
+    const del = document.createElement('button');
+    del.className = 'del'; del.textContent = '×';
+    del.onclick = () => deleteSchedule(s.id);
+    row.appendChild(del);
+    el.appendChild(row);
+  }
+  updateNextDose();
+}
+
+// ---------------- Borrar historial de notificaciones ----------------
+$('clear-events').onclick = () => {
+  $('confirm-overlay').classList.add('show');
+};
+$('confirm-cancel').onclick = () => {
+  $('confirm-overlay').classList.remove('show');
+};
+$('confirm-overlay').onclick = (e) => {
+  // cerrar al hacer click fuera del cuadro
+  if (e.target === $('confirm-overlay')) $('confirm-overlay').classList.remove('show');
+};
+$('confirm-delete').onclick = async () => {
+  const btn = $('confirm-delete');
+  btn.disabled = true;
+  btn.textContent = 'Borrando…';
+  try {
+    await api('/api/events', { method: 'DELETE' });
+    $('confirm-overlay').classList.remove('show');
+    await loadEvents();
+    showToast('Historial de notificaciones borrado.', 'ok');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Borrar todo';
+  }
+};
+
+$('test-trigger').onclick = async () => {
+  const btn = $('test-trigger');
+  btn.disabled = true;
+  btn.textContent = 'Enviado, esperando al ESP32…';
+  try {
+    await api('/api/schedules/force-trigger', { method: 'POST' });
+    showToast('Listo — el ESP32 va a dispensar en su próximo chequeo (máx. 1s).', 'ok');
+  } finally {
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '⚡ Probar dispensación ahora';
+    }, 3000);
+  }
+};
+
+$('add-schedule').onclick = async () => {
+  const hoursFromNow = parseInt($('new-hours').value, 10) || 0;
+  const minutesFromNow = parseInt($('new-minutes').value, 10) || 0;
+  const label = $('new-label').value.trim();
+  const totalSeconds = hoursFromNow * 3600 + minutesFromNow * 60;
+
+  let body;
+  if (addMode === 'repeat') {
+    if (totalSeconds <= 0) return;
+    const countRaw = $('new-count').value.trim();
+    const repeat_count = countRaw ? parseInt(countRaw, 10) : null;
+    body = { repeat_seconds: totalSeconds, repeat_count, label };
+  } else {
+    const target = new Date(Date.now() + totalSeconds * 1000);
+    body = { hour: target.getHours(), minute: target.getMinutes(), second: target.getSeconds(), label };
+  }
+
+  await api('/api/schedules', { method: 'POST', body: JSON.stringify(body) });
+  $('new-label').value = '';
+  $('new-count').value = '';
+  await loadSchedules();
+
+  if (addMode === 'repeat') {
+    showToast('Horario creado — la primera pastilla se dispensa en unos segundos.', 'ok');
+  }
+};
+
+async function deleteSchedule(id) {
+  await api('/api/schedules/' + id, { method: 'DELETE' });
+  await loadSchedules();
+}
+
+function updateNextDose() {
+  const el = $('stat-next');
+  const active = currentSchedules.filter(s => s.active);
+  if (!active.length) {
+    el.className = 'v empty';
+    el.textContent = currentSchedules.length ? 'Sin horarios activos' : 'Sin horarios aún';
+    return;
+  }
+
+  const withDiff = active.map(s => ({ s, diff: secondsUntil(s) }));
+  const upcoming = withDiff.sort((a, b) => a.diff - b.diff)[0];
+  const label = upcoming.s.label || 'Sin etiqueta';
+
+  el.className = 'v accent';
+  el.innerHTML = `${fmtTimer(upcoming.diff)}<small>${label}</small>`;
+}
+
+// ---------------- EVENTOS / NOTIFICACIONES ----------------
+const eventText = {
+  dispensed: 'Pastilla dispensada',
+  alert: 'Alerta: la pastilla aún no se ha tomado',
+  taken: 'Pastilla tomada por el paciente',
+  timeout: 'Tiempo límite alcanzado sin tomar la pastilla'
+};
+
+let lastEventsSignature = '';
+let latestEvent = null; // último evento conocido, usado por la cuenta regresiva de alarma
+
+async function loadEvents() {
+  const list = await api('/api/events');
+  latestEvent = list[0] || null;
+  // Firma rápida para saber si la lista cambió (evita redibujar en vano).
+  const signature = list.map(e => e.id + e.is_read).join(',');
+  if (signature !== lastEventsSignature) {
+    lastEventsSignature = signature;
+    renderEvents(list);
+  }
+  updateStats(list);
+  renderAlarmCountdown();
+}
+
+function renderEvents(list) {
+  const el = $('event-list');
+  el.innerHTML = '';
+  $('event-count').textContent = list.length;
+  if (!list.length) { el.innerHTML = '<div class="empty">Sin notificaciones aún.</div>'; return; }
+  for (const e of list) {
+    const row = document.createElement('div');
+    row.className = 'event';
+    const delayTxt = e.delay_seconds != null ? ` · ${e.delay_seconds}s` : '';
+    // Si el evento trae un mensaje personalizado (ej. alerta de primera
+    // pastilla), se muestra ese en vez del texto genérico del tipo.
+    const texto = e.message ? escapeHtml(e.message) : (eventText[e.type] || e.type) + delayTxt;
+    row.innerHTML = `
+      <div class="icon ${e.type}">${icons[e.type] || ''}</div>
+      <div>
+        <div class="txt">${texto}</div>
+        <div class="meta">${new Date(e.created_at).toLocaleString('es-CO')}</div>
+      </div>`;
+    el.appendChild(row);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function updateStats(list) {
+  // Última actividad
+  const elActivity = $('stat-activity');
+  if (list.length) {
+    const last = new Date(list[0].created_at);
+    const diffMin = Math.round((Date.now() - last.getTime()) / 60000);
+    let txt;
+    if (diffMin < 1) txt = 'Justo ahora';
+    else if (diffMin < 60) txt = `Hace ${diffMin} min`;
+    else if (diffMin < 1440) txt = `Hace ${Math.round(diffMin / 60)} h`;
+    else txt = `Hace ${Math.round(diffMin / 1440)} d`;
+    elActivity.className = 'v';
+    elActivity.innerHTML = `${txt}<small>${eventText[list[0].type] || list[0].type}</small>`;
+  } else {
+    elActivity.className = 'v empty';
+    elActivity.textContent = 'Sin actividad aún';
+  }
+}
+
+// ---------------- Cuenta regresiva de la alarma (Etapa 3) ----------------
+// Mientras el último evento sea "dispensed" (la pastilla cayó pero aún no
+// se ha retirado), muestra los segundos que faltan para que suene la
+// alarma (alertThresholdSeconds). Al llegar a 0 muestra "Sonando" durante
+// unos segundos; en cuanto llega "taken"/"timeout"/otro evento, se oculta.
+function renderAlarmCountdown() {
+  const el = $('stat-alarm');
+  if (!latestEvent || latestEvent.type !== 'dispensed') {
+    el.className = 'v empty';
+    el.textContent = 'Sin alerta activa';
+    return;
+  }
+
+  const elapsed = (Date.now() - new Date(latestEvent.created_at).getTime()) / 1000;
+  const remaining = alertThresholdSeconds - elapsed;
+
+  if (remaining > 0) {
+    el.className = 'v warn';
+    el.innerHTML = `${fmtTimer(remaining)}<small>Antes de que suene la alarma</small>`;
+  } else {
+    el.className = 'v alarm';
+    el.innerHTML = `Sonando<small>Esperando a que se retire la pastilla</small>`;
+  }
+}
+
+// Supabase Realtime: nuevas filas en `events` llegan aquí al instante,
+// sin necesidad de infraestructura de push aparte.
+function subscribeRealtime() {
+  sb.channel('events-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, () => {
+      loadEvents();
+    })
+    // Cambios en schedules (ej: last_cycle_at al retirar la pastilla, o
+    // times_fired al dispensar): recargamos horarios para que el contador
+    // del siguiente ciclo arranque de inmediato, sin esperar el refresco de 30s.
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
+      loadSchedules();
+    })
+    .subscribe();
+}
+
+// Refresco silencioso: consulta el servidor cada 2s y actualiza solo lo
+// que cambió (notificaciones, horarios), sin recargar la página ni parpadear.
+// Reemplaza al Realtime de Supabase, que es inestable en el plan free.
+async function refrescoSilencioso() {
+  if (!session) return;
+  try {
+    await Promise.all([loadEvents(), loadSchedules(), checkDeviceStatus()]);
+  } catch (e) {
+    // silencioso: el helper api() ya avisa con un toast si el backend falla
+  }
+}
+
+// Tick de 1s: redibuja los temporizadores en vivo (usa datos ya en memoria)
+setInterval(() => { if (session) { renderScheduleList(); renderAlarmCountdown(); } }, 1000);
+// Refresco de datos desde el servidor cada 2s (imperceptible): notificaciones,
+// horarios y estado en línea del ESP32.
+setInterval(refrescoSilencioso, 2000);
+
+// ---------------- Sesión existente al cargar ----------------
+// Revisa localStorage primero (sesión "recordada"), luego sessionStorage
+// (sesión de esta pestaña únicamente).
+(async () => {
+  const local = await sbLocal.auth.getSession();
+  if (local.data.session) { sb = sbLocal; onAuthenticated(local.data.session); return; }
+
+  const sess = await sbSession.auth.getSession();
+  if (sess.data.session) { sb = sbSession; onAuthenticated(sess.data.session); }
+})();
+</script>
+</body>
+</html>

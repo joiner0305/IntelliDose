@@ -100,11 +100,25 @@ app.get('/api/esp32/force-check', requireDeviceKey, async (req, res) => {
   res.json({ trigger: true });
 });
 
-// El dashboard activa esta bandera; el ESP32 la recoge en su próximo
-// chequeo de /api/esp32/force-check (máx. ~1s).
+// Botón "Probar ahora": crea un horario repetitivo de UNA sola vez.
+// Al ser repetitivo sin ciclo previo, su primera pastilla se dispensa
+// de inmediato — EXACTAMENTE el mismo camino que un horario normal recién
+// creado. repeat_count=1 hace que se detenga tras esa única dispensación.
 app.post('/api/schedules/force-trigger', requireUser, async (req, res) => {
-  const { error } = await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
+  const { error } = await supabase.from('schedules').insert({
+    hour: null,
+    minute: null,
+    second: null,
+    repeat_seconds: 3600,   // valor cualquiera; con repeat_count=1 no se repite
+    repeat_count: 1,
+    label: 'Prueba',
+    created_by: req.user.id
+  });
   if (error) return res.status(500).json({ error: error.message });
+
+  // Levanta la bandera para que el ESP32 recargue horarios y dispense en ~2s
+  // (en vez de esperar el poll de 30s).
+  await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
   res.status(204).end();
 });
 

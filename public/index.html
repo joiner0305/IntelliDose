@@ -783,7 +783,7 @@ function subscribeRealtime() {
 async function refrescoSilencioso() {
   if (!session) return;
   try {
-    await Promise.all([loadEvents(), loadSchedules()]);
+    await Promise.all([loadEvents(), loadSchedules(), checkDeviceStatus()]);
   } catch (e) {
     // silencioso: el helper api() ya avisa con un toast si el backend falla
   }
@@ -791,10 +791,9 @@ async function refrescoSilencioso() {
 
 // Tick de 1s: redibuja los temporizadores en vivo (usa datos ya en memoria)
 setInterval(() => { if (session) renderScheduleList(); }, 1000);
-// Refresco de datos desde el servidor cada 2s (imperceptible)
+// Refresco de datos desde el servidor cada 2s (imperceptible): notificaciones,
+// horarios y estado en línea del ESP32.
 setInterval(refrescoSilencioso, 2000);
-// Indicador "en línea" del ESP32 cada 10s
-setInterval(() => { if (session) checkDeviceStatus(); }, 10000);
 
 // ---------------- Sesión existente al cargar ----------------
 // Revisa localStorage primero (sesión "recordada"), luego sessionStorage

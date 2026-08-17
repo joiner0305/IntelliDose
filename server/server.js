@@ -247,7 +247,9 @@ app.get('/api/device/status', requireUser, async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   const lastSeen = data.last_seen_at ? new Date(data.last_seen_at).getTime() : null;
-  const online = lastSeen != null && (Date.now() - lastSeen) < 40000; // 40s de gracia
+  // El ESP32 hace un force-check cada 1s, así que si no lo vemos en 5s
+  // lo consideramos desconectado (detección casi inmediata).
+  const online = lastSeen != null && (Date.now() - lastSeen) < 5000;
   res.json({ online, last_seen_at: data.last_seen_at });
 });
 

@@ -89,15 +89,31 @@ app.get('/api/esp32/schedules', requireDeviceKey, async (req, res) => {
   });
 });
 
-// Chequeo súper liviano, pensado para consultarse cada 1s (a diferencia
-// de /api/esp32/schedules que se consulta cada 30s). Si el dashboard
-// activó "Probar ahora", responde true UNA sola vez y lo apaga de inmediato,
-// para que un solo click dispare exactamente una vez.
+// Chequeo súper liviano, pensado para consultarse cada 1-2s (a diferencia
+// de /api/esp32/schedules que se consulta cada 30s).
+//
+// Devuelve DOS banderas independientes, cada una se apaga sola al leerse:
+//  · trigger:         "Probar ahora" del dashboard -> dispensa una prueba
+//                      YA MISMO, sin pertenecer a ningún horario.
+//  · schedules_dirty: se creó o borró un horario -> el ESP32 solo debe
+//                      refrescar su lista (GET /api/esp32/schedules) y
+//                      dejar que su propia lógica de horario decida si
+//                      corresponde dispensar o cancelar un ciclo. NUNCA
+//                      debe forzar una dispensación por sí sola.
 app.get('/api/esp32/force-check', requireDeviceKey, async (req, res) => {
-  if (!req.deviceConfig.force_trigger) return res.json({ trigger: false });
+  const trigger = !!req.deviceConfig.force_trigger;
+  const schedulesDirty = !!req.deviceConfig.schedules_dirty;
 
-  await supabase.from('device_config').update({ force_trigger: false }).eq('id', 1);
-  res.json({ trigger: true });
+  if (!trigger && !schedulesDirty) {
+    return res.json({ trigger: false, schedules_dirty: false });
+  }
+
+  const updates = {};
+  if (trigger) updates.force_trigger = false;
+  if (schedulesDirty) updates.schedules_dirty = false;
+  await supabase.from('device_config').update(updates).eq('id', 1);
+
+  res.json({ trigger, schedules_dirty: schedulesDirty });
 });
 
 // Botón "Probar ahora": solo levanta la bandera. El ESP32 la recoge en
@@ -127,37 +143,36 @@ app.post('/api/esp32/event', requireDeviceKey, async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Cada dispensación cuenta contra el límite del horario (si tiene uno).
-  // Un horario de "una vez" (repeat_seconds null) siempre se desactiva
-  // tras su primera dispensación; uno repetitivo solo si alcanzó
-  // repeat_count, o sigue activo indefinidamente si no tiene límite.
-  if (type === 'dispensed' && schedule_id) {
+  // El ciclo termina con "taken" o "timeout": recién ahí sabemos que la
+  // dispensación ya se completó de verdad (la persona la tomó, o se agotó
+  // el tiempo de espera). Es aquí -y solo aquí- donde:
+  //   1) contamos la dosis contra el límite del horario (times_fired) y
+  //      decidimos si se desactiva (una vez, o repetitivo que alcanzó
+  //      repeat_count),
+  //   2) guardamos last_cycle_at, ancla para el próximo disparo.
+  // Antes esto se hacía en "dispensed", lo que desactivaba el horario
+  // (y lo sacaba de /api/esp32/schedules) MIENTRAS la persona todavía
+  // estaba a mitad del ciclo, provocando que el ESP32 cancelara el ciclo
+  // sin enviar nunca "taken" -> el dashboard quedaba con el contador de
+  // espera en bucle aunque ya mostrara "Completado".
+  if ((type === 'taken' || type === 'timeout') && schedule_id) {
     const { data: sched } = await supabase
       .from('schedules')
       .select('repeat_seconds, repeat_count, times_fired')
       .eq('id', schedule_id)
       .single();
 
+    const updates = { last_cycle_at: new Date().toISOString() };
+
     if (sched) {
       const timesFired = (sched.times_fired || 0) + 1;
       const isOnce = sched.repeat_seconds == null;
       const reachedLimit = isOnce || (sched.repeat_count != null && timesFired >= sched.repeat_count);
-
-      await supabase
-        .from('schedules')
-        .update({ times_fired: timesFired, active: !reachedLimit })
-        .eq('id', schedule_id);
+      updates.times_fired = timesFired;
+      updates.active = !reachedLimit;
     }
-  }
 
-  // El ciclo termina con "taken" o "timeout": recién ahí el ESP32 empieza
-  // a contar el siguiente intervalo (si es un horario repetitivo). Guardamos
-  // el momento para que el dashboard muestre el mismo conteo que el dispositivo.
-  if ((type === 'taken' || type === 'timeout') && schedule_id) {
-    await supabase
-      .from('schedules')
-      .update({ last_cycle_at: new Date().toISOString() })
-      .eq('id', schedule_id);
+    await supabase.from('schedules').update(updates).eq('id', schedule_id);
   }
 
   // Supabase Realtime notifica automáticamente al dashboard
@@ -201,10 +216,14 @@ app.post('/api/schedules', requireUser, async (req, res) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
 
-  // Para que la PRIMERA pastilla caiga en ~1s (y no esperar los 30s del
-  // poll normal), levantamos la bandera de chequeo rápido: el ESP32 la
-  // recoge en su force-check de cada 1s, recarga horarios y dispensa.
-  await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
+  // Para que el ESP32 se entere del nuevo horario en ~1-2s (y no esperar
+  // los 30s del poll normal), levantamos "schedules_dirty": el ESP32 la
+  // recoge en su force-check y SOLO refresca su lista de horarios. Es su
+  // propia lógica (revisarSiTocaDispensar / tocaDisparoRepetitivo) la que
+  // decide si corresponde dispensar ya o esperar. IMPORTANTE: nunca usar
+  // force_trigger aquí, esa bandera es exclusiva del botón "Probar ahora"
+  // y provoca una dispensación de prueba inmediata sin horario asociado.
+  await supabase.from('device_config').update({ schedules_dirty: true }).eq('id', 1);
 
   res.status(201).json(data);
 });
@@ -213,10 +232,11 @@ app.delete('/api/schedules/:id', requireUser, async (req, res) => {
   const { error } = await supabase.from('schedules').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
 
-  // Levanta la bandera rápida: si el ESP32 estaba a mitad de un ciclo de
-  // este horario, la recoge en su force-check (~2s), recarga horarios,
-  // ve que ya no existe y cancela el ciclo de inmediato.
-  await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
+  // Igual que al crear: solo pedimos un refresco rápido de la lista.
+  // Si el ESP32 estaba a mitad de un ciclo de este horario, su propio
+  // refresco detecta que ya no existe y cancela el ciclo (ver
+  // obtenerHorariosYConfig() en el .ino).
+  await supabase.from('device_config').update({ schedules_dirty: true }).eq('id', 1);
   res.status(204).end();
 });
 

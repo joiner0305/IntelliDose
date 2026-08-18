@@ -476,9 +476,19 @@ async function onAuthenticated(sess) {
 }
 
 // ---------------- Estado del dispositivo (en línea / desconectado) ----------------
+// Desfase entre el reloj del servidor y el del navegador (ms).
+// ahoraServidor() = Date.now() + serverClockOffset -> hora del servidor.
+let serverClockOffset = 0;
+function ahoraServidor() { return Date.now() + serverClockOffset; }
+
 async function checkDeviceStatus() {
   try {
     const st = await api('/api/device/status');
+    // Sincroniza el reloj con el servidor (corrige el desfase que desajusta
+    // los contadores de los ciclos).
+    if (st.server_now) {
+      serverClockOffset = new Date(st.server_now).getTime() - Date.now();
+    }
     const el = $('device-status');
     if (st.online) {
       el.className = 'device-status online';
@@ -486,7 +496,7 @@ async function checkDeviceStatus() {
     } else {
       el.className = 'device-status offline';
       if (st.last_seen_at) {
-        const secs = Math.round((Date.now() - new Date(st.last_seen_at).getTime()) / 1000);
+        const secs = Math.round((ahoraServidor() - new Date(st.last_seen_at).getTime()) / 1000);
         const ago = secs < 60 ? `hace ${secs}s` : secs < 3600 ? `hace ${Math.round(secs/60)} min` : `hace ${Math.round(secs/3600)} h`;
         $('device-status-text').textContent = `Desconectado (${ago})`;
       } else {
@@ -578,11 +588,14 @@ function secondsUntil(s) {
     //    cae de inmediato -> 0s restantes.
     //  · Si ya hubo un ciclo: el conteo del siguiente disparo se cuenta
     //    desde el último retiro/timeout registrado.
+    // Se usa ahoraServidor() (no Date.now()) para que coincida con el reloj
+    // del servidor, que es el que fija last_cycle_at — así el contador no
+    // se desfasa aunque el reloj del navegador esté adelantado o atrasado.
     if (!s.last_cycle_at) return 0;
-    const elapsed = (Date.now() - new Date(s.last_cycle_at).getTime()) / 1000;
+    const elapsed = (ahoraServidor() - new Date(s.last_cycle_at).getTime()) / 1000;
     return Math.max(0, s.repeat_seconds - elapsed);
   }
-  const now = new Date();
+  const now = new Date(ahoraServidor());
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
   const target = s.hour * 3600 + s.minute * 60 + s.second;
   let diff = target - nowSec;

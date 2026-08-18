@@ -60,6 +60,25 @@
   .stat .v small{font-family:var(--sans); font-size:12px; color:var(--dim); font-weight:500; display:block; margin-top:4px;}
   .stat .v.accent{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
   .stat .v.empty{font-family:var(--sans); font-size:13px; font-weight:500; color:var(--dim);}
+
+  /* ---- Tarjeta de espera (cuenta regresiva de la mano) ---- */
+  .espera-card{
+    display:flex; align-items:center; gap:16px; margin-bottom:20px;
+    background:linear-gradient(135deg, rgba(242,169,59,0.12), rgba(242,169,59,0.04));
+    border:1px solid rgba(242,169,59,0.35); border-radius:var(--radius); padding:18px 22px;
+  }
+  .espera-pulse{
+    width:14px; height:14px; border-radius:50%; background:var(--amber); flex:0 0 auto;
+    box-shadow:0 0 0 0 rgba(242,169,59,0.6); animation:pulseAmber 1.4s infinite;
+  }
+  @keyframes pulseAmber{
+    0%{box-shadow:0 0 0 0 rgba(242,169,59,0.55);}
+    70%{box-shadow:0 0 0 12px rgba(242,169,59,0);}
+    100%{box-shadow:0 0 0 0 rgba(242,169,59,0);}
+  }
+  .espera-title{font-family:var(--display); font-size:14px; font-weight:600; color:var(--text);}
+  .espera-sub{font-family:var(--mono); font-size:12px; color:var(--amber); margin-top:3px;}
+  .espera-sub span{font-variant-numeric:tabular-nums; font-weight:600;}
   @media (max-width:680px){ .stats{grid-template-columns:1fr;} }
 
   /* ================= PANELS ================= */
@@ -284,6 +303,14 @@
       <div class="stat">
         <div class="k">Última actividad</div>
         <div class="v empty" id="stat-activity">Cargando…</div>
+      </div>
+    </div>
+
+    <div id="espera-card" class="espera-card" style="display:none;">
+      <div class="espera-pulse"></div>
+      <div class="espera-txt">
+        <div class="espera-title">Esperando que el paciente tome la pastilla</div>
+        <div class="espera-sub">Alerta en <span id="espera-count">30s</span></div>
       </div>
     </div>
 
@@ -742,6 +769,8 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+let esperandoManoDesde = null; // timestamp del dispensed si está esperando que tomen la pastilla
+
 function updateStats(list) {
   // Última actividad
   const elActivity = $('stat-activity');
@@ -759,6 +788,32 @@ function updateStats(list) {
     elActivity.className = 'v empty';
     elActivity.textContent = 'Sin actividad aún';
   }
+
+  // ¿El dispositivo está esperando que tomen la pastilla? Se busca el último
+  // 'dispensed' y se comprueba que no haya un 'taken'/'timeout' posterior.
+  // (list viene ordenada de más reciente a más antigua)
+  esperandoManoDesde = null;
+  for (const e of list) {
+    if (e.type === 'taken' || e.type === 'timeout') break; // ciclo ya cerrado
+    if (e.type === 'dispensed') { esperandoManoDesde = new Date(e.created_at).getTime(); break; }
+  }
+  renderEsperaContador();
+}
+
+// Muestra la cuenta regresiva 30->0 mientras se espera que tomen la pastilla.
+// Al llegar a 0 reinicia a 30 (indefinidamente, como en el ESP32).
+const ALERT_THRESHOLD_SEG = 30;
+function renderEsperaContador() {
+  const card = $('espera-card');
+  if (!card) return;
+  if (esperandoManoDesde == null) {
+    card.style.display = 'none';
+    return;
+  }
+  const elapsed = Math.floor((Date.now() - esperandoManoDesde) / 1000);
+  const restante = ALERT_THRESHOLD_SEG - (elapsed % ALERT_THRESHOLD_SEG);
+  card.style.display = 'block';
+  $('espera-count').textContent = restante + 's';
 }
 
 // Supabase Realtime: nuevas filas en `events` llegan aquí al instante,
@@ -790,7 +845,7 @@ async function refrescoSilencioso() {
 }
 
 // Tick de 1s: redibuja los temporizadores en vivo (usa datos ya en memoria)
-setInterval(() => { if (session) renderScheduleList(); }, 1000);
+setInterval(() => { if (session) { renderScheduleList(); renderEsperaContador(); } }, 1000);
 // Refresco de datos desde el servidor cada 2s (imperceptible): notificaciones,
 // horarios y estado en línea del ESP32.
 setInterval(refrescoSilencioso, 2000);

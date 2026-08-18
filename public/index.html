@@ -803,14 +803,19 @@ function updateStats(list) {
 // Muestra la cuenta regresiva 30->0 mientras se espera que tomen la pastilla.
 // Al llegar a 0 reinicia a 30 (indefinidamente, como en el ESP32).
 const ALERT_THRESHOLD_SEG = 30;
+const MAX_ESPERA_SEG = 600; // tras 10 min sin cerrar, se asume ciclo abandonado/viejo
 function renderEsperaContador() {
   const card = $('espera-card');
   if (!card) return;
-  if (esperandoManoDesde == null) {
+  const elapsed = esperandoManoDesde != null
+    ? Math.floor((Date.now() - esperandoManoDesde) / 1000)
+    : null;
+  // Ocultar si no hay espera activa, o si el dispensed es demasiado viejo
+  // (ciclo que quedó sin cerrar, ej. se borró el horario a mitad).
+  if (elapsed == null || elapsed > MAX_ESPERA_SEG) {
     card.style.display = 'none';
     return;
   }
-  const elapsed = Math.floor((Date.now() - esperandoManoDesde) / 1000);
   const restante = ALERT_THRESHOLD_SEG - (elapsed % ALERT_THRESHOLD_SEG);
   card.style.display = 'block';
   $('espera-count').textContent = restante + 's';

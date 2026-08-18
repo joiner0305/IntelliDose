@@ -771,6 +771,7 @@ function escapeHtml(str) {
 
 let esperaDispensedId = null;  // id del evento dispensed que estamos esperando
 let esperaInicioLocal = null;  // millis() local cuando lo detectamos por primera vez
+let esperaCreatedAt = null;    // created_at real (servidor) del dispensed, para medir su edad
 
 function updateStats(list) {
   // Última actividad
@@ -806,28 +807,39 @@ function updateStats(list) {
       // Nuevo dispensed: arranca el contador desde ahora (reloj local).
       esperaDispensedId = dispensedActivo.id;
       esperaInicioLocal = Date.now();
+      esperaCreatedAt = new Date(dispensedActivo.created_at).getTime();
     }
   } else {
     esperaDispensedId = null;
     esperaInicioLocal = null;
+    esperaCreatedAt = null;
   }
   renderEsperaContador();
 }
 
 // Muestra la cuenta regresiva 30->0 mientras se espera que tomen la pastilla.
-// Al llegar a 0 reinicia a 30 (indefinidamente, como en el ESP32).
+// Al llegar a 0 reinicia a 30. Se oculta sola si el dispensed ya es viejo
+// (el ciclo terminó pero no llegó su evento de cierre, o quedó huérfano).
 const ALERT_THRESHOLD_SEG = 30;
-const MAX_ESPERA_SEG = 600; // tras 10 min sin cerrar, se asume ciclo abandonado/viejo
+const MAX_ESPERA_SEG = 180; // tras 3 min, se asume que el ciclo ya terminó/quedó huérfano
 function renderEsperaContador() {
   const card = $('espera-card');
   if (!card) return;
-  const elapsed = esperaInicioLocal != null
-    ? Math.floor((Date.now() - esperaInicioLocal) / 1000)
+
+  // Tiempo real transcurrido desde que el ESP32 dispensó (según el servidor),
+  // para decidir si el ciclo sigue vivo o ya es viejo.
+  const edadReal = esperaCreatedAt != null
+    ? Math.floor((Date.now() - esperaCreatedAt) / 1000)
     : null;
-  if (elapsed == null || elapsed > MAX_ESPERA_SEG) {
+
+  if (edadReal == null || edadReal > MAX_ESPERA_SEG) {
     card.style.display = 'none';
     return;
   }
+
+  // El conteo visual usa el reloj local (sin desfase), arrancando cuando
+  // se detectó el dispensed.
+  const elapsed = Math.floor((Date.now() - esperaInicioLocal) / 1000);
   const restante = ALERT_THRESHOLD_SEG - (elapsed % ALERT_THRESHOLD_SEG);
   card.style.display = 'block';
   $('espera-count').textContent = restante + 's';

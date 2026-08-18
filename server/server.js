@@ -212,6 +212,11 @@ app.post('/api/schedules', requireUser, async (req, res) => {
 app.delete('/api/schedules/:id', requireUser, async (req, res) => {
   const { error } = await supabase.from('schedules').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
+
+  // Levanta la bandera rápida: si el ESP32 estaba a mitad de un ciclo de
+  // este horario, la recoge en su force-check (~2s), recarga horarios,
+  // ve que ya no existe y cancela el ciclo de inmediato.
+  await supabase.from('device_config').update({ force_trigger: true }).eq('id', 1);
   res.status(204).end();
 });
 

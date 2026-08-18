@@ -769,7 +769,8 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-let esperandoManoDesde = null; // timestamp del dispensed si está esperando que tomen la pastilla
+let esperaDispensedId = null;  // id del evento dispensed que estamos esperando
+let esperaInicioLocal = null;  // millis() local cuando lo detectamos por primera vez
 
 function updateStats(list) {
   // Última actividad
@@ -790,12 +791,25 @@ function updateStats(list) {
   }
 
   // ¿El dispositivo está esperando que tomen la pastilla? Se busca el último
-  // 'dispensed' y se comprueba que no haya un 'taken'/'timeout' posterior.
-  // (list viene ordenada de más reciente a más antigua)
-  esperandoManoDesde = null;
+  // 'dispensed' sin un 'taken'/'timeout' posterior. (list viene de más
+  // reciente a más antigua). Se cuenta desde el reloj LOCAL del navegador
+  // a partir de que se detecta ese dispensed, para evitar desfases entre
+  // el reloj del servidor y el del navegador.
+  let dispensedActivo = null;
   for (const e of list) {
     if (e.type === 'taken' || e.type === 'timeout') break; // ciclo ya cerrado
-    if (e.type === 'dispensed') { esperandoManoDesde = new Date(e.created_at).getTime(); break; }
+    if (e.type === 'dispensed') { dispensedActivo = e; break; }
+  }
+
+  if (dispensedActivo) {
+    if (esperaDispensedId !== dispensedActivo.id) {
+      // Nuevo dispensed: arranca el contador desde ahora (reloj local).
+      esperaDispensedId = dispensedActivo.id;
+      esperaInicioLocal = Date.now();
+    }
+  } else {
+    esperaDispensedId = null;
+    esperaInicioLocal = null;
   }
   renderEsperaContador();
 }
@@ -807,11 +821,9 @@ const MAX_ESPERA_SEG = 600; // tras 10 min sin cerrar, se asume ciclo abandonado
 function renderEsperaContador() {
   const card = $('espera-card');
   if (!card) return;
-  const elapsed = esperandoManoDesde != null
-    ? Math.floor((Date.now() - esperandoManoDesde) / 1000)
+  const elapsed = esperaInicioLocal != null
+    ? Math.floor((Date.now() - esperaInicioLocal) / 1000)
     : null;
-  // Ocultar si no hay espera activa, o si el dispensed es demasiado viejo
-  // (ciclo que quedó sin cerrar, ej. se borró el horario a mitad).
   if (elapsed == null || elapsed > MAX_ESPERA_SEG) {
     card.style.display = 'none';
     return;

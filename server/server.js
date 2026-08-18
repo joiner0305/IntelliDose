@@ -256,7 +256,9 @@ app.get('/api/device/status', requireUser, async (req, res) => {
   // El ESP32 hace un force-check cada 1s, así que si no lo vemos en 5s
   // lo consideramos desconectado (detección casi inmediata).
   const online = lastSeen != null && (Date.now() - lastSeen) < 5000;
-  res.json({ online, last_seen_at: data.last_seen_at });
+  // server_now permite al navegador corregir el desfase entre su reloj y
+  // el del servidor, para que los contadores no se desincronicen.
+  res.json({ online, last_seen_at: data.last_seen_at, server_now: new Date().toISOString() });
 });
 
 app.get('/health', (req, res) => res.json({ ok: true }));
